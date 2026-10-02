@@ -60,7 +60,7 @@ CONDITION ?= nominal
 
 .PHONY: help install install-native install-cuda doctor ports ports-snapshot ports-diff cameras hf-login hf-whoami \
 	udev import-calib calib-status calibrate-follower calibrate-leader teleop \
-	record record-resume check-dataset push-dataset train-cmd train train-resume train-hf-job push-model \
+	record record-resume check-dataset push-dataset train-cmd train train-act train-resume train-hf-job push-model \
 	rollout policy-server rollout-async eval-log eval-report setup-motors prep \
 	need-follower need-leader need-wrist need-oak need-hf-user need-image need-calib need-calib-follower
 
@@ -172,6 +172,12 @@ train-cmd: need-hf-user ## Affiche les commandes à coller dans le terminal du s
 	@echo "  --policy.device=cuda --wandb.enable=false \\"
 	@echo "  --policy.push_to_hub=true --policy.repo_id=$(MODEL_REPO_ID) > train_$(TASK_NAME).log 2>&1 &"
 	@echo "# 4. Suivi : tail -f train_$(TASK_NAME).log   (loss, pas/s) ; nvidia-smi (mémoire GPU)"
+	@echo "# 5. Secours, en parallèle sur une autre instance GPU : ACT sur le même dataset (inférence fluide sur CPU)"
+	@echo "nohup lerobot-train --policy.type=act --dataset.repo_id=$(DATASET_REPO_ID) \\"
+	@echo "  --batch_size=$(ACT_BATCH_SIZE) --steps=$(ACT_STEPS) --save_freq=$(ACT_SAVE_FREQ) \\"
+	@echo "  --output_dir=outputs/train/act_$(TASK_NAME) --job_name=act_$(TASK_NAME) \\"
+	@echo "  --policy.device=cuda --wandb.enable=false \\"
+	@echo "  --policy.push_to_hub=true --policy.repo_id=$(ACT_MODEL_REPO_ID) > train_act_$(TASK_NAME).log 2>&1 &"
 
 train: need-hf-user prep ## lerobot-train depuis lerobot/smolvla_base
 	@command -v nvidia-smi >/dev/null && nvidia-smi -L || { echo "ERREUR : pas de GPU NVIDIA ici. Entraîne sur le serveur GPU (RUNNER=native) ; payant : make train-hf-job."; exit 1; }
@@ -182,6 +188,14 @@ train: need-hf-user prep ## lerobot-train depuis lerobot/smolvla_base
 		--output_dir=$(TRAIN_OUTPUT_DIR) --job_name=smolvla_$(TASK_NAME) \
 		--policy.device=cuda --wandb.enable=false \
 		--policy.push_to_hub=$(PUSH_MODEL) $(if $(filter true,$(PUSH_MODEL)),--policy.repo_id=$(MODEL_REPO_ID))
+
+train-act: need-hf-user prep ## Secours : ACT sur le même dataset (inférence fluide sur CPU)
+	@command -v nvidia-smi >/dev/null && nvidia-smi -L || { echo "ERREUR : pas de GPU NVIDIA ici. make train-cmd affiche la commande pour le serveur GPU."; exit 1; }
+	$(call run_gpu,) lerobot-train --policy.type=act --dataset.repo_id=$(DATASET_REPO_ID) \
+		--batch_size=$(ACT_BATCH_SIZE) --steps=$(ACT_STEPS) --save_freq=$(ACT_SAVE_FREQ) \
+		--output_dir=$(ACT_OUTPUT_DIR) --job_name=act_$(TASK_NAME) \
+		--policy.device=cuda --wandb.enable=false \
+		--policy.push_to_hub=$(PUSH_MODEL) $(if $(filter true,$(PUSH_MODEL)),--policy.repo_id=$(ACT_MODEL_REPO_ID))
 
 train-resume: prep ## Reprend l'entraînement au dernier checkpoint
 	$(call run_gpu,) lerobot-train --config_path=$(TRAIN_OUTPUT_DIR)/checkpoints/last/pretrained_model/train_config.json --resume=true

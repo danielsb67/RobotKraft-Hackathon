@@ -61,6 +61,20 @@ Choix et raisons (sources et vérifications : [docs/REFERENCES.md](docs/REFERENC
 - **Calibrations, datasets, modèles et token HF** sont dans `.cache/`, ignoré par git, comme `outputs/`.
 - **Mêmes ids que le repo du challenge** (`follower_arm`, `leader_arm`) : `make import-calib` reprend ses calibrations.
 
+## Déjà validé sans les bras (nuit du 2 au 3 octobre)
+
+| Test | Résultat |
+|---|---|
+| Image `robotkraft-smolvla:local` | LeRobot 0.5.1, torch 2.10 CPU, SmolVLA importable |
+| Caméras dans le conteneur de `make record`, via les classes LeRobot | camera1 `ZMQCamera` et camera2 `OpenCVCamera` : 480x640x3, ~30 images/s |
+| Commandes générées par `record`, `record-resume`, `rollout`, `rollout-async` | acceptées par les parseurs de LeRobot 0.5.1 |
+| Encodage vidéo en direct, 2 caméras 640x480 à 30 fps | tient le rythme sur ce PC (AV1 comme H.264) |
+| `lerobot-train` SmolVLA depuis smolvla_base, et ACT, sur un dataset au format exact de `lerobot-record` | OK (3 pas sur CPU, loss en baisse, checkpoint écrit) |
+| Inférence sur le CPU de ce PC (i5-1155G7) | SmolVLA : **5 s** par paquet de 50 actions (1,7 s de mouvement). ACT : **0,3 s** par paquet de 100 actions (3,3 s de mouvement) |
+| `check_dataset.py`, `eval_logger.py` | OK sur données de test |
+
+Reste à valider avec le matériel : `make udev`, calibration, téléopération, enregistrement réel, rollout.
+
 ## Phase 0 — Installation et détection
 
 ```bash
@@ -137,6 +151,10 @@ Le PC n'a pas de GPU NVIDIA. Trois options :
 3. **HF Jobs (payant, facturé à la seconde)** : `make train-hf-job` affiche la commande et le coût sans rien lancer.
    Pour lancer réellement : `make train-hf-job CONFIRM_PAID=yes`.
 
+**ACT en secours.** `make train-cmd` affiche aussi la commande ACT, sur le même dataset. Lance-la en parallèle
+sur une deuxième instance GPU : ACT s'entraîne vite et tourne de façon fluide sur le CPU du PC.
+Si l'inférence GPU de SmolVLA n'est pas disponible pendant la démo, c'est lui qui assure.
+
 Réglages (`config/robotkraft.env`) :
 - `TRAIN_STEPS=20000` : la doc SmolVLA compte environ 4 h sur un A100 complet.
 - `BATCH_SIZE=32` : 64 dans la doc (sur A100). À ajuster selon la mémoire GPU, et à baisser en cas de « CUDA out of memory ».
@@ -155,10 +173,20 @@ make eval-report                                                    # tableau + 
 - `make rollout` lance `lerobot-record --policy.path=...`. Le modèle pilote le follower pendant `EVAL_EPISODES`
   essais de `EVAL_EPISODE_TIME_S`, avec une pause de remise en place entre deux. Chaque essai est enregistré
   dans un dataset `eval_...` daté.
-- **L'inférence se fait sur le CPU du PC** (`POLICY_DEVICE=cpu`) : le bras marque une pause à chaque nouveau paquet
-  de 50 actions. Si c'est trop lent, fais tourner le modèle sur une machine GPU du même réseau :
-  - sur la machine GPU : `make policy-server` ;
-  - sur le PC : `make rollout-async ASYNC_SERVER=ip_de_la_machine:8080`.
+- **Où tourne le modèle**, d'après les mesures faites sur ce PC :
+
+  | Policy | Inférence | Comportement du bras |
+  |---|---|---|
+  | SmolVLA sur le CPU du PC (`make rollout`) | 5 s par paquet de 50 actions | 1,7 s de mouvement puis 5 s d'arrêt. Utilisable pour tester, mets `EVAL_EPISODE_TIME_S=90` |
+  | SmolVLA sur une machine GPU | une fraction de seconde | fluide |
+  | ACT sur le CPU du PC (`make rollout POLICY_PATH=..._act_...`) | 0,3 s par paquet de 100 actions | fluide (courte pause toutes les 3,3 s) |
+
+  Deux façons de faire tourner SmolVLA sur un GPU :
+  - **tout sur la machine GPU** : bras et caméras branchés dessus, ce dossier copié, `make install-cuda`,
+    puis `make rollout POLICY_DEVICE=cuda` ;
+  - **inférence déportée** : sur la machine GPU, `make policy-server` ; sur le PC,
+    `make rollout-async ASYNC_SERVER=ip_de_la_machine:8080`. Les deux machines doivent se joindre sur le réseau,
+    par exemple avec un câble Ethernet direct.
 - Conditions à tester (critères du jury) : `nominal`, `position`, `eclairage`, `distracteurs`, `objet_nouveau`.
   Fais 10 essais par condition. L'intervalle de confiance du rapport rappelle qu'avec 10 essais, l'écart entre deux
   versions doit être grand pour être significatif.
@@ -170,6 +198,7 @@ make eval-report                                                    # tableau + 
 | `ERREUR : /dev/so101_follower absent` | Bras débranché, ou `make udev` pas fait. Avec la règle par port USB : bras rebranché sur un autre port. |
 | `make teleop` : le follower ne bouge pas, ou bouge à l'envers | Bras inversés dans la règle udev : refais `make udev`. Sinon calibration ratée : `make calibrate-follower`. |
 | `FileExistsError` ou `existe déjà` au record | Le dataset existe : `make record-resume`, ou change `TASK_NAME`. |
+| Le record a planté avant le premier épisode sauvegardé | Supprime le dossier vide : `rm -rf .cache/huggingface/lerobot/<HF_USER>/robotkraft_<TASK_NAME>`. |
 | Les touches → ← Échap ne font rien | Terminal Wayland : relance depuis le terminal de VS Code. Sinon, ouvre une session « Ubuntu sur Xorg ». |
 | `aucune image de l'OAK-D` | Rebranche l'OAK-D sur un port USB 3 et ferme les autres programmes qui l'utilisent. |
 | `Record loop is running slower` | PC surchargé : ferme les autres programmes. L'OAK doit être sur un port USB 3. |
@@ -189,6 +218,7 @@ scripts/detect_cameras.py caméras + une capture chacune dans outputs/cam_check/
 scripts/udev_rules.sh    symlinks /dev/so101_follower et /dev/so101_leader
 scripts/oak_zmq_server.py pont OAK-D -> ZMQ (camera1), repris du repo du challenge, résolution paramétrable
 scripts/with_oak.sh      lance le pont OAK le temps d'une commande
+scripts/robot_client_zmq.py client d'inférence async officiel + caméra ZMQ (repris du repo du challenge)
 tools/check_dataset.py   validation du dataset + graphiques
 tools/eval_logger.py     journal des essais -> CSV, tableau, graphique
 docs/REFERENCES.md       sources et décisions
