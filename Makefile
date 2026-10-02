@@ -131,6 +131,34 @@ calibrate-leader: need-leader need-image prep ## [terminal] lerobot-calibrate du
 teleop: need-follower need-leader need-calib need-image prep ## [terminal] Le follower suit le leader (Ctrl+C pour arrêter)
 	$(call run,$(DEV_FOLLOWER) $(DEV_LEADER)) lerobot-teleoperate $(ROBOT_ARGS) $(TELEOP_ARGS)
 
+##@ Phase 2 — Enregistrement du dataset
+record: need-hf-user need-follower need-leader need-wrist need-oak need-calib need-image prep ## [terminal] lerobot-record : NUM_EPISODES épisodes, camera1 + camera2
+	@[ -n "$(RECORD_EXTRA)" ] || [ ! -e $(DATASET_DIR) ] || { echo "ERREUR : $(DATASET_DIR) existe déjà. make record-resume pour compléter, ou change TASK_NAME."; exit 1; }
+	$(call run,$(DEV_FOLLOWER) $(DEV_LEADER) $(DEV_WRIST) $(DEV_OAK) $(DEV_X11) $(OAK_ENV)) bash scripts/with_oak.sh lerobot-record \
+		$(ROBOT_ARGS) $(TELEOP_ARGS) '--robot.cameras=$(CAMERAS)' \
+		--dataset.repo_id=$(DATASET_REPO_ID) \
+		--dataset.single_task="$(TASK_TEXT)" \
+		--dataset.fps=$(CAM_FPS) \
+		--dataset.num_episodes=$(NUM_EPISODES) \
+		--dataset.episode_time_s=$(EPISODE_TIME_S) \
+		--dataset.reset_time_s=$(RESET_TIME_S) \
+		--dataset.push_to_hub=$(PUSH_TO_HUB) --dataset.private=$(HUB_PRIVATE) \
+		--dataset.streaming_encoding=true \
+		--display_data=false --play_sounds=false $(RECORD_EXTRA)
+
+record-resume: RECORD_EXTRA = --resume=true
+record-resume: record ## [terminal] Ajoute NUM_EPISODES épisodes au dataset existant
+
+check-dataset: need-hf-user need-image prep ## Valide le dataset, trace les trajectoires (outputs/dataset_check/)
+	$(call run,) python3 tools/check_dataset.py --repo-id $(DATASET_REPO_ID) \
+		--fps $(CAM_FPS) --width $(CAM_WIDTH) --height $(CAM_HEIGHT) \
+		--task "$(TASK_TEXT)" --expected-episodes $(NUM_EPISODES) \
+		--out outputs/dataset_check/$(subst /,__,$(DATASET_REPO_ID))
+
+push-dataset: need-hf-user need-image prep ## Pousse le dataset sur le Hub (privé si HUB_PRIVATE=true)
+	$(call run,) python3 -c "from lerobot.datasets.lerobot_dataset import LeRobotDataset; \
+		LeRobotDataset('$(DATASET_REPO_ID)').push_to_hub(private=$(if $(filter true,$(HUB_PRIVATE)),True,False))"
+
 # ---------------------------------------------------------------------------
 # Garde-fous
 # ---------------------------------------------------------------------------
