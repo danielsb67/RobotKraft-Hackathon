@@ -205,6 +205,40 @@ train-hf-job: need-hf-user need-image prep ## PAYANT : entraînement HF Jobs, re
 push-model: need-hf-user need-image prep ## Pousse POLICY_PATH (dernier checkpoint) sur le Hub
 	$(call run,) hf upload $(MODEL_REPO_ID) $(POLICY_PATH) --repo-type model $(if $(filter true,$(HUB_PRIVATE)),--private)
 
+##@ Phase 4 — Rollout et taux de succès
+rollout: need-hf-user need-follower need-wrist need-oak need-calib-follower need-image prep ## [terminal] La policy pilote le follower, EVAL_EPISODES essais
+	@[[ "$(POLICY_PATH)" != outputs/* ]] || [ -s $(POLICY_PATH)/config.json ] || { echo "ERREUR : policy introuvable : $(POLICY_PATH)"; exit 1; }
+	$(call run_policy,$(DEV_FOLLOWER) $(DEV_WRIST) $(DEV_OAK) $(DEV_X11) $(OAK_ENV)) bash scripts/with_oak.sh lerobot-record \
+		$(ROBOT_ARGS) '--robot.cameras=$(CAMERAS)' \
+		--policy.path=$(POLICY_PATH) --policy.device=$(POLICY_DEVICE) \
+		--dataset.repo_id=$(EVAL_REPO_ID) \
+		--dataset.single_task="$(TASK_TEXT)" \
+		--dataset.fps=$(CAM_FPS) \
+		--dataset.num_episodes=$(EVAL_EPISODES) \
+		--dataset.episode_time_s=$(EVAL_EPISODE_TIME_S) \
+		--dataset.reset_time_s=$(EVAL_RESET_TIME_S) \
+		--dataset.push_to_hub=false --dataset.streaming_encoding=true \
+		--display_data=false --play_sounds=false
+
+policy-server: prep ## Machine GPU : serveur d'inférence asynchrone officiel (port 8080)
+	$(if $(filter docker,$(RUNNER)),$(DOCKER_RUN) --gpus all -p 8080:8080 $(TRAIN_IMAGE)) \
+		python3 -m lerobot.async_inference.policy_server --host=0.0.0.0 --port=8080 --fps=$(CAM_FPS)
+
+rollout-async: need-follower need-wrist need-oak need-calib-follower need-image prep ## [terminal] Rollout avec inférence sur la machine GPU : ASYNC_SERVER=ip:8080
+	@[ -n "$(ASYNC_SERVER)" ] || { echo "ERREUR : précise ASYNC_SERVER=ip:8080 (machine qui fait tourner make policy-server)"; exit 1; }
+	$(call run,$(DEV_FOLLOWER) $(DEV_WRIST) $(DEV_OAK) $(OAK_ENV)) bash scripts/with_oak.sh \
+		python3 scripts/robot_client_zmq.py \
+		$(ROBOT_ARGS) '--robot.cameras=$(CAMERAS)' \
+		--task="$(TASK_TEXT)" --server_address=$(ASYNC_SERVER) \
+		--policy_type=smolvla --pretrained_name_or_path=$(ASYNC_POLICY) --policy_device=cuda \
+		--actions_per_chunk=50 --chunk_size_threshold=0.5 --fps=$(CAM_FPS)
+
+eval-log: ## [terminal] Note chaque essai : make eval-log RUN=v1 CONDITION=nominal
+	python3 tools/eval_logger.py log --run "$(RUN)" --condition "$(CONDITION)" --policy "$(POLICY_PATH)" --task "$(TASK_TEXT)"
+
+eval-report: ## Tableau et graphique des taux de succès (outputs/eval/)
+	python3 tools/eval_logger.py report
+
 # ---------------------------------------------------------------------------
 # Garde-fous
 # ---------------------------------------------------------------------------
