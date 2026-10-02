@@ -106,8 +106,9 @@ make teleop               # [terminal]
 - **Calibration** (`lerobot-calibrate`, une fois par bras) : place le bras au milieu de sa course, Entrée.
   Ensuite, bouge chaque articulation d'une butée à l'autre, une par une, pince comprise. Entrée pour finir.
   Si les calibrations existent déjà dans le repo du challenge : `make import-calib`.
-- **Si LeRobot demande « Press ENTER to use provided calibration file... or type 'c' »** : les moteurs ont été
-  calibrés ailleurs (autre PC). Entrée réécrit dans les moteurs la calibration de ce PC. `c` refait une calibration.
+- **Si LeRobot demande « Press ENTER to use provided calibration file... or type 'c' »** : un fichier de calibration
+  existe déjà pour cet id. Ça arrive en relançant `make calibrate-*`, ou au démarrage si les moteurs ont été
+  calibrés ailleurs entre-temps (autre PC). Entrée garde le fichier et le réécrit dans les moteurs. `c` refait la calibration.
 - **Téléopération** : avant de lancer, mets le leader dans la même pose que le follower. Au démarrage, le follower
   rejoint d'un coup la pose du leader. Garde une main près de l'alimentation 12 V du follower.
 
@@ -146,8 +147,9 @@ Le PC n'a pas de GPU NVIDIA. Trois options :
 1. **Serveur GPU du challenge (gratuit, recommandé)**. `make train-cmd` affiche les 3 commandes à coller dans un
    terminal JupyterLab du serveur : installation de `lerobot[smolvla]==0.5.1` si absent, `hf auth login`, puis
    l'entraînement en arrière-plan. Le serveur télécharge le dataset depuis le Hub et y renvoie le modèle à la fin.
-2. **Une machine NVIDIA avec Docker** (ta tour 5070 Ti, par exemple) : copie ce dossier,
-   puis `make install-cuda && make train`.
+2. **Une machine NVIDIA avec Docker** (ta tour 5070 Ti, par exemple) : copie ce dossier, `make install-cuda`, puis
+   mets `IMAGE=robotkraft-smolvla:cuda` et `POLICY_DEVICE=cuda` dans `config/robotkraft.env.local`, et `make train`.
+   Toutes les cibles utilisent alors l'image CUDA, rollout compris.
 3. **HF Jobs (payant, facturé à la seconde)** : `make train-hf-job` affiche la commande et le coût sans rien lancer.
    Pour lancer réellement : `make train-hf-job CONFIRM_PAID=yes`.
 
@@ -190,8 +192,8 @@ make eval-report                                                    # tableau + 
   | ACT sur le CPU du PC (`make rollout POLICY_PATH=..._act_...`) | 0,3 s par paquet de 100 actions | fluide (courte pause toutes les 3,3 s) |
 
   Deux façons de faire tourner SmolVLA sur un GPU :
-  - **tout sur la machine GPU** : bras et caméras branchés dessus, ce dossier copié, `make install-cuda`,
-    puis `make rollout POLICY_DEVICE=cuda` ;
+  - **tout sur la machine GPU** : bras et caméras branchés dessus, ce dossier copié et configuré comme en
+    Phase 3, option 2, puis `make udev`, `make import-calib` (ou recalibrer) et `make rollout` ;
   - **inférence déportée** : sur la machine GPU, `make policy-server` ; sur le PC,
     `make rollout-async ASYNC_SERVER=ip_de_la_machine:8080`. Les deux machines doivent se joindre sur le réseau,
     par exemple avec un câble Ethernet direct.
@@ -204,7 +206,8 @@ make eval-report                                                    # tableau + 
 | Symptôme | Cause probable et solution |
 |---|---|
 | `ERREUR : /dev/so101_follower absent` | Bras débranché, ou `make udev` pas fait. Avec la règle par port USB : bras rebranché sur un autre port. |
-| `make teleop` : le follower ne bouge pas, ou bouge à l'envers | Bras inversés dans la règle udev : refais `make udev`. Sinon calibration ratée : `make calibrate-follower`. |
+| `make teleop` : le follower ne bouge pas | Alimentation 12 V du follower branchée ? Sinon bras inversés dans la règle udev : refais `make udev`. |
+| `make teleop` : le follower bouge de travers ou à l'envers | Calibration ratée ou faite avec l'autre bras : refais `make calibrate-follower` et `make calibrate-leader`. |
 | `FileExistsError` ou `existe déjà` au record | Le dataset existe : `make record-resume`, ou change `TASK_NAME`. |
 | Le record a planté avant le premier épisode sauvegardé | Supprime le dossier vide : `rm -rf .cache/huggingface/lerobot/<HF_USER>/robotkraft_<TASK_NAME>`. |
 | Les touches → ← Échap ne font rien | Terminal Wayland : relance depuis le terminal de VS Code. Sinon, ouvre une session « Ubuntu sur Xorg ». |
