@@ -162,10 +162,18 @@ Réglages (`config/robotkraft.env`) :
 
 Surveille la loss dans le log : elle doit baisser nettement pendant les premiers milliers de pas.
 
+**Budget temps.** Chaque ligne du log affiche `updt_s` (secondes par pas) : durée totale ≈ `TRAIN_STEPS` × `updt_s`.
+Les instances du challenge sont des parts de GPU : 24 Go sur Agora, A100 MIG 20 Go limitée à 4 h sur InnovLab.
+20k pas peuvent donc prendre bien plus que les 4 h annoncées pour un A100 entier. Lance l'entraînement dès que le
+dataset est poussé. Calcule la durée après quelques minutes et baisse `TRAIN_STEPS` si la fin tombe trop tard
+(10k pas, par exemple). Un checkpoint est écrit tous les `SAVE_FREQ` pas : `make train-cmd` donne la commande
+`hf upload` pour tester un checkpoint intermédiaire sur le PC sans attendre la fin.
+
 ## Phase 4 — Rollout et taux de succès
 
 ```bash
-make rollout POLICY_PATH=ton_pseudo/smolvla_robotkraft_pickplace   # modèle sur le Hub, ou un dossier local
+make rollout                                                        # SmolVLA du Hub (MODEL_REPO_ID)
+make rollout POLICY_PATH=ton_pseudo/act_robotkraft_pickplace        # ou ACT, ou un dossier local
 make eval-log RUN=v1 CONDITION=nominal                              # 2e terminal : s / p / e après chaque essai
 make eval-report                                                    # tableau + graphique dans outputs/eval/
 ```

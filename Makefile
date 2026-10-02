@@ -171,7 +171,9 @@ train-cmd: need-hf-user ## Affiche les commandes à coller dans le terminal du s
 	@echo "  --output_dir=outputs/train/smolvla_$(TASK_NAME) --job_name=smolvla_$(TASK_NAME) \\"
 	@echo "  --policy.device=cuda --wandb.enable=false \\"
 	@echo "  --policy.push_to_hub=true --policy.repo_id=$(MODEL_REPO_ID) > train_$(TASK_NAME).log 2>&1 &"
-	@echo "# 4. Suivi : tail -f train_$(TASK_NAME).log   (loss, pas/s) ; nvidia-smi (mémoire GPU)"
+	@echo "# 4. Suivi : tail -f train_$(TASK_NAME).log ; durée totale ≈ $(TRAIN_STEPS) x updt_s (affiché à chaque log) ; nvidia-smi"
+	@echo "#    Tester un checkpoint intermédiaire sur le PC (push_to_hub n'envoie qu'à la fin) :"
+	@echo "hf upload $(MODEL_REPO_ID) outputs/train/smolvla_$(TASK_NAME)/checkpoints/last/pretrained_model --repo-type model --private"
 	@echo "# 5. Secours, en parallèle sur une autre instance GPU : ACT sur le même dataset (inférence fluide sur CPU)"
 	@echo "nohup lerobot-train --policy.type=act --dataset.repo_id=$(DATASET_REPO_ID) \\"
 	@echo "  --batch_size=$(ACT_BATCH_SIZE) --steps=$(ACT_STEPS) --save_freq=$(ACT_SAVE_FREQ) \\"
@@ -216,8 +218,8 @@ train-hf-job: need-hf-user need-image prep ## PAYANT : entraînement HF Jobs, re
 	$(call run,) hf jobs run --flavor $(HF_JOB_FLAVOR) --timeout $(HF_JOB_TIMEOUT) --secrets HF_TOKEN -d \
 		$(HF_JOB_IMAGE) bash -c "$(HF_JOB_SCRIPT)"
 
-push-model: need-hf-user need-image prep ## Pousse POLICY_PATH (dernier checkpoint) sur le Hub
-	$(call run,) hf upload $(MODEL_REPO_ID) $(POLICY_PATH) --repo-type model $(if $(filter true,$(HUB_PRIVATE)),--private)
+push-model: need-hf-user need-image prep ## Pousse le dernier checkpoint local (TRAIN_OUTPUT_DIR) sur le Hub
+	$(call run,) hf upload $(MODEL_REPO_ID) $(TRAIN_OUTPUT_DIR)/checkpoints/last/pretrained_model --repo-type model $(if $(filter true,$(HUB_PRIVATE)),--private)
 
 ##@ Phase 4 — Rollout et taux de succès
 rollout: need-hf-user need-follower need-wrist need-oak need-calib-follower need-image prep ## [terminal] La policy pilote le follower, EVAL_EPISODES essais
