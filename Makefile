@@ -109,6 +109,28 @@ hf-login: need-image prep ## [terminal] Connexion Hugging Face (token dans .cach
 hf-whoami: need-image prep ## Affiche le compte Hugging Face utilisé
 	$(call run,) hf auth whoami
 
+##@ Phase 1 — Ports stables, calibration, téléopération
+udev: ## [terminal] Crée /dev/so101_follower et /dev/so101_leader (sudo après confirmation)
+	bash scripts/udev_rules.sh
+
+import-calib: ## Copie les calibrations du repo du challenge (SRC=~/robotkraft-participant/.cache)
+	@src=$(or $(SRC),$(HOME)/robotkraft-participant/.cache)/huggingface/lerobot/calibration; \
+	for rel in robots/so_follower/$(FOLLOWER_ID).json teleoperators/so_leader/$(LEADER_ID).json; do \
+		if [ -s $$src/$$rel ]; then mkdir -p $(CALIB_DIR)/$$(dirname $$rel) && cp -v $$src/$$rel $(CALIB_DIR)/$$rel; \
+		else echo "absent : $$src/$$rel"; fi; done
+
+calib-status: ## Montre les calibrations présentes
+	@for f in $(CALIB_FOLLOWER) $(CALIB_LEADER); do [ -s $$f ] && echo "OK $$f ($$(date -r $$f '+%d/%m %H:%M'))" || echo "ABSENTE $$f"; done
+
+calibrate-follower: need-follower need-image prep ## [terminal] lerobot-calibrate du follower (une fois)
+	$(call run,$(DEV_FOLLOWER)) lerobot-calibrate $(ROBOT_ARGS)
+
+calibrate-leader: need-leader need-image prep ## [terminal] lerobot-calibrate du leader (une fois)
+	$(call run,$(DEV_LEADER)) lerobot-calibrate $(TELEOP_ARGS)
+
+teleop: need-follower need-leader need-calib need-image prep ## [terminal] Le follower suit le leader (Ctrl+C pour arrêter)
+	$(call run,$(DEV_FOLLOWER) $(DEV_LEADER)) lerobot-teleoperate $(ROBOT_ARGS) $(TELEOP_ARGS)
+
 # ---------------------------------------------------------------------------
 # Garde-fous
 # ---------------------------------------------------------------------------
