@@ -159,6 +159,52 @@ push-dataset: need-hf-user need-image prep ## Pousse le dataset sur le Hub (priv
 	$(call run,) python3 -c "from lerobot.datasets.lerobot_dataset import LeRobotDataset; \
 		LeRobotDataset('$(DATASET_REPO_ID)').push_to_hub(private=$(if $(filter true,$(HUB_PRIVATE)),True,False))"
 
+##@ Phase 3 — Fine-tuning SmolVLA (machine avec GPU NVIDIA)
+train-cmd: need-hf-user ## Affiche les commandes à coller dans le terminal du serveur GPU (JupyterLab)
+	@echo "# 1. Une fois : lerobot 0.5.1 avec SmolVLA (sauter si 'lerobot-train --help' marche déjà)"
+	@echo "pip install 'lerobot[smolvla]==0.5.1'"
+	@echo "# 2. Une fois : token Hugging Face 'write' (lecture du dataset privé, envoi du modèle)"
+	@echo "hf auth login"
+	@echo "# 3. Entraînement en arrière-plan (survit à la fermeture de l'onglet), modèle poussé sur $(MODEL_REPO_ID)"
+	@echo "nohup lerobot-train --policy.path=$(POLICY_BASE) --dataset.repo_id=$(DATASET_REPO_ID) \\"
+	@echo "  --batch_size=$(BATCH_SIZE) --steps=$(TRAIN_STEPS) --save_freq=$(SAVE_FREQ) \\"
+	@echo "  --output_dir=outputs/train/smolvla_$(TASK_NAME) --job_name=smolvla_$(TASK_NAME) \\"
+	@echo "  --policy.device=cuda --wandb.enable=false \\"
+	@echo "  --policy.push_to_hub=true --policy.repo_id=$(MODEL_REPO_ID) > train_$(TASK_NAME).log 2>&1 &"
+	@echo "# 4. Suivi : tail -f train_$(TASK_NAME).log   (loss, pas/s) ; nvidia-smi (mémoire GPU)"
+
+train: need-hf-user prep ## lerobot-train depuis lerobot/smolvla_base
+	@command -v nvidia-smi >/dev/null && nvidia-smi -L || { echo "ERREUR : pas de GPU NVIDIA ici. Entraîne sur le serveur GPU (RUNNER=native) ; payant : make train-hf-job."; exit 1; }
+	$(call run_gpu,) lerobot-train \
+		--policy.path=$(POLICY_BASE) \
+		--dataset.repo_id=$(DATASET_REPO_ID) \
+		--batch_size=$(BATCH_SIZE) --steps=$(TRAIN_STEPS) --save_freq=$(SAVE_FREQ) \
+		--output_dir=$(TRAIN_OUTPUT_DIR) --job_name=smolvla_$(TASK_NAME) \
+		--policy.device=cuda --wandb.enable=false \
+		--policy.push_to_hub=$(PUSH_MODEL) $(if $(filter true,$(PUSH_MODEL)),--policy.repo_id=$(MODEL_REPO_ID))
+
+train-resume: prep ## Reprend l'entraînement au dernier checkpoint
+	$(call run_gpu,) lerobot-train --config_path=$(TRAIN_OUTPUT_DIR)/checkpoints/last/pretrained_model/train_config.json --resume=true
+
+HF_JOB_IMAGE  = python:3.12
+HF_JOB_SCRIPT = apt-get update -qq && apt-get install -y -qq ffmpeg >/dev/null && pip install -q 'lerobot[smolvla]==0.5.1' && \
+	lerobot-train --policy.path=$(POLICY_BASE) --dataset.repo_id=$(DATASET_REPO_ID) \
+	--batch_size=$(BATCH_SIZE) --steps=$(TRAIN_STEPS) --save_freq=$(SAVE_FREQ) --output_dir=/tmp/train \
+	--job_name=smolvla_$(TASK_NAME) --policy.device=cuda --wandb.enable=false \
+	--policy.push_to_hub=true --policy.repo_id=$(MODEL_REPO_ID)
+train-hf-job: need-hf-user need-image prep ## PAYANT : entraînement HF Jobs, refusé sans CONFIRM_PAID=yes
+	@if [ "$(CONFIRM_PAID)" != yes ]; then \
+		echo "PAYANT : HF Jobs $(HF_JOB_FLAVOR), facturé à la seconde, coupé au bout de $(HF_JOB_TIMEOUT)."; \
+		echo "Prérequis : dataset sur le Hub (make push-dataset). Le modèle sera poussé sur $(MODEL_REPO_ID)."; \
+		echo "Commande qui serait lancée :"; \
+		echo "  hf jobs run --flavor $(HF_JOB_FLAVOR) --timeout $(HF_JOB_TIMEOUT) --secrets HF_TOKEN -d $(HF_JOB_IMAGE) bash -c \"$(HF_JOB_SCRIPT)\""; \
+		echo "Pour lancer réellement : make train-hf-job CONFIRM_PAID=yes"; exit 1; fi
+	$(call run,) hf jobs run --flavor $(HF_JOB_FLAVOR) --timeout $(HF_JOB_TIMEOUT) --secrets HF_TOKEN -d \
+		$(HF_JOB_IMAGE) bash -c "$(HF_JOB_SCRIPT)"
+
+push-model: need-hf-user need-image prep ## Pousse POLICY_PATH (dernier checkpoint) sur le Hub
+	$(call run,) hf upload $(MODEL_REPO_ID) $(POLICY_PATH) --repo-type model $(if $(filter true,$(HUB_PRIVATE)),--private)
+
 # ---------------------------------------------------------------------------
 # Garde-fous
 # ---------------------------------------------------------------------------
