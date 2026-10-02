@@ -1,0 +1,22 @@
+# Sorties (captures caméra, contrôles dataset, checkpoints, évaluations, logs du client async)
+outputs/
+logs/
+
+# Dépendances tierces clonées localement
+third_party/
+
+# Surcharges locales de config (HF_USER, chemins perso) : jamais versionnées
+*.env.local
+
+# Données : datasets, calibrations, cache Hugging Face (token compris), modèles
+.cache/
+data/
+datasets/
+*.parquet
+*.mp4
+*.safetensors
+
+# Python
+__pycache__/
+*.pyc
+.venv/
