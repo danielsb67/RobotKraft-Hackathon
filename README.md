@@ -18,7 +18,7 @@ Toute la configuration est dans [config/robotkraft.env](config/robotkraft.env). 
 |---|---|---|
 | 1 | `cd ~/robotkraft && make doctor` | Image OK, caméras OK. Bras et calibrations « ABSENT » au premier passage. |
 | 2 | `echo "HF_USER=ton_pseudo_hf" > config/robotkraft.env.local` | Puis édite `TASK_NAME` et `TASK_TEXT` dans `config/robotkraft.env`. |
-| 3 | `make hf-login`, puis `make hf-whoami` | Colle un token **write** (huggingface.co/settings/tokens). Ton pseudo s'affiche. |
+| 3 | `make hf-login`, puis `make hf-whoami` | Colle un token **write** (huggingface.co/settings/tokens) ou suis le lien de connexion affiché. Ton pseudo s'affiche. |
 | 4 | Brancher : follower (alim **12 V**), leader (alim **5 V**), OAK-D (USB 3), caméra poignet | |
 | 5 | `make udev` (une seule fois) | Suis les questions. sudo est demandé à la fin, après affichage de la règle. `OK /dev/so101_follower -> ...` |
 | 6 | `make cameras` | Ouvre `outputs/cam_check/all.jpg` : camera1 voit tout l'espace de travail, camera2 voit la pince, net. |
