@@ -155,7 +155,8 @@ record: need-hf-user need-follower need-leader need-wrist need-oak need-calib ne
 		--dataset.streaming_encoding=true \
 		--display_data=false --play_sounds=false $(RECORD_EXTRA)
 
-record-resume: RECORD_EXTRA = --resume=true
+# LeRobot 0.5.1 refuse de reprendre sans dossier explicite (il n'écrit pas dans le cache du Hub).
+record-resume: RECORD_EXTRA = --resume=true --dataset.root=$(DATASET_DIR)
 record-resume: record ## [terminal] Ajoute NUM_EPISODES épisodes au dataset existant
 
 check-dataset: need-hf-user need-image prep ## Valide le dataset, trace les trajectoires (outputs/dataset_check/)
