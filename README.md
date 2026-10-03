@@ -30,6 +30,17 @@ Toute la configuration est dans [config/robotkraft.env](config/robotkraft.env). 
 
 Le détail de chaque phase, les vérifications physiques et les erreurs courantes sont plus bas.
 
+## Épreuves
+
+| Dossier | Épreuve | Commande |
+|---|---|---|
+| [TRI/](TRI/) | Tri de tubes par couleur | `make tri ORDER=BJR` |
+| [ETIQ/](ETIQ/) | Reconnaissance d'étiquettes et saisie | `make etiquette MOT=...` |
+| [MASSE/](MASSE/) | Pesée par oscillation | à faire |
+| [COMMUN/](COMMUN/) | Caméras, voix, journal, lancement du modèle (partagé) | |
+
+Chaque épreuve : la vision décide, le modèle (commandes officielles LeRobot) fait le geste, la vision vérifie, et on recommence si raté. `make install-epreuves` installe la vision et l'OCR.
+
 ## Comment c'est construit
 
 ```

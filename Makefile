@@ -274,7 +274,7 @@ push-model: need-hf-user need-image prep ## Pousse le dernier checkpoint local (
 	$(call run,) hf upload $(MODEL_REPO_ID) $(TRAIN_OUTPUT_DIR)/checkpoints/last/pretrained_model --repo-type model $(if $(filter true,$(HUB_PRIVATE)),--private)
 
 ##@ Épreuves — un workflow complet par épreuve (vision + modèle + vérification + reprise)
-EP_PY = env -u PYTHONPATH .venv-epreuves/bin/python
+EP_PY = env PYTHONPATH=$(CURDIR)/COMMUN .venv-epreuves/bin/python
 EPREUVE_SECONDS ?= $(if $(ASYNC_SERVER),25,90)
 EP_COMMON = --seconds $(EPREUVE_SECONDS) --async-server "$(ASYNC_SERVER)" --max-tries $(MAX_TRIES) $(if $(DRY),--dry-run)
 ORDER ?= $(TRI_ORDER)
@@ -286,25 +286,25 @@ need-epreuves:
 	@[ -x .venv-epreuves/bin/python ] || { echo "ERREUR : make install-epreuves d'abord"; exit 1; }
 
 tri: need-epreuves need-follower need-wrist need-oak need-calib-follower need-image prep ## [terminal] Épreuve TRI complète : make tri ORDER=BJR (DRY=1 : sans bouger le bras)
-	$(EP_PY) epreuves/tri.py run --order $(ORDER) --policy $(TRI_POLICY) --fps $(TRI_POLICY_FPS) $(EP_COMMON) \
+	$(EP_PY) TRI/tri.py run --order $(ORDER) --policy $(TRI_POLICY) --fps $(TRI_POLICY_FPS) $(EP_COMMON) \
 		--text-b "$(TRI_TEXT_B)" --text-j "$(TRI_TEXT_J)" --text-r "$(TRI_TEXT_R)"
 
 tri-calib: need-epreuves need-oak need-image prep ## TRI : cliquer les 6 places du porte-tubes et la zone de la table (une fois)
-	$(EP_PY) epreuves/tri.py calib
+	$(EP_PY) TRI/tri.py calib
 
 tri-voir: need-epreuves need-oak need-image prep ## TRI : vision en direct (couleurs vues sur la table et dans le porte-tubes)
-	$(EP_PY) epreuves/tri.py voir
+	$(EP_PY) TRI/tri.py voir
 
 etiquette: need-epreuves need-follower need-wrist need-oak need-calib-follower need-image prep ## [terminal] Épreuve ETIQ : make etiquette MOT=IODURE [OU=rack|table] [LECTURE_CAM=oak|poignet]
 	@[ -n "$(MOT)" ] || { echo "ERREUR : précise le mot, ex. make etiquette MOT=IODURE"; exit 1; }
-	$(EP_PY) epreuves/etiq.py run --mot "$(MOT)" --ou $(or $(OU),rack) --lecture $(LECTURE_CAM) --policy $(ETIQ_POLICY) --fps $(ETIQ_POLICY_FPS) \
+	$(EP_PY) ETIQ/etiq.py run --mot "$(MOT)" --ou $(or $(OU),rack) --lecture $(LECTURE_CAM) --policy $(ETIQ_POLICY) --fps $(ETIQ_POLICY_FPS) \
 		$(subst --fps-rec $(REC_FPS) ,,$(EP_COMMON)) --text-slot "$(ETIQ_TEXT_SLOT)" --text-zone "$(ETIQ_TEXT_ZONE)"
 
 etiquette-calib: need-epreuves need-oak need-image prep ## ETIQ : cliquer les places du rack et les zones de la table (une fois)
-	$(EP_PY) epreuves/etiq.py calib
+	$(EP_PY) ETIQ/etiq.py calib
 
 etiquette-voir: need-epreuves need-image prep ## ETIQ : lecture des étiquettes en direct (LECTURE_CAM=oak|poignet)
-	$(EP_PY) epreuves/etiq.py voir --lecture $(LECTURE_CAM)
+	$(EP_PY) ETIQ/etiq.py voir --lecture $(LECTURE_CAM)
 
 # Sous-gestes ETIQ : un dataset par sous-geste ; le follower garde sa pose à la fin de la commande.
 SKILL_REC = $(MAKE) --no-print-directory rec N=$(N) EPISODE_TIME_S=$(SKILL_TIME_S) ROBOT_EXTRA=--robot.disable_torque_on_disconnect=false
@@ -370,7 +370,7 @@ eval-log: ## [terminal] Note chaque essai : make eval-log RUN=v1 CONDITION=nomin
 eval-report: ## Tableau et graphique des taux de succès (outputs/eval/)
 	python3 tools/eval_logger.py report
 
-# Valeur d'une variable (utilisé par epreuves/commun.py) : make -s print-WRIST_CAM
+# Valeur d'une variable (utilisé par COMMUN/commun.py) : make -s print-WRIST_CAM
 print-%:
 	@echo '$($*)'
 

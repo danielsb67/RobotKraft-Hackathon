@@ -26,7 +26,7 @@ Table : niveau 1 seulement (zone = centre calibré le plus proche du mot lu), sa
   configuré ; pas de geste REPOSER sur la table : un mauvais objet arrête l'épreuve.
 
 Caméras : l'OAK (vue fixe, pont permanent) localise, car elle seule est calibrée
-(config/etiq_calib.json). La caméra poignet n'est ouverte qu'entre deux gestes (le modèle s'en sert
+(ETIQ/etiq_calib.json). La caméra poignet n'est ouverte qu'entre deux gestes (le modèle s'en sert
 pendant les gestes) : niveau 2, et avec --lecture poignet une lecture de confirmation après chaque
 saisie (pour information : elle voit souvent le dos du tube, son silence ne fait rien échouer).
 
@@ -47,10 +47,11 @@ import unicodedata
 import cv2
 import numpy as np
 
-import commun
+sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parents[1] / "COMMUN"))
+import commun  # noqa: E402
 from commun import say
 
-CALIB = commun.ROOT / "config" / "etiq_calib.json"
+CALIB = commun.ROOT / "ETIQ" / "etiq_calib.json"
 NB_PLACES = 6
 SEUIL = float(os.environ.get("ETIQ_SEUIL", 0.75))  # ressemblance minimale mot lu / mot demandé
 POIGNET_INVERSE = os.environ.get("ETIQ_POIGNET_INVERSE", "") not in ("", "0")

@@ -10,7 +10,7 @@ dans la place libre la plus à gauche vue du robot. Le modèle connaît une phra
 lui-même la place ; la vision (OAK, seuillage HSV) compte les tubes restant sur la table, désigne la
 place attendue et vérifie le résultat après chaque essai.
 
-Calibration et seuils : config/tri_calib.json (éditable à la main, voir la clé "_aide").
+Calibration et seuils : TRI/tri_calib.json (éditable à la main, voir la clé "_aide").
 Sans souris : tri.py calib --slots "x,y;x,y;..." --table "x,y;x,y;..." ; tri.py voir --once vue.jpg
 """
 import argparse
@@ -24,9 +24,10 @@ from collections import Counter
 import cv2
 import numpy as np
 
-import commun
+sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parents[1] / "COMMUN"))
+import commun  # noqa: E402
 
-CALIB = commun.ROOT / "config" / "tri_calib.json"
+CALIB = commun.ROOT / "TRI" / "tri_calib.json"
 COULEURS = "BJR"
 NOMS = {"B": "bleu", "J": "jaune", "R": "rouge"}
 DESSIN = {"B": (255, 140, 0), "J": (0, 215, 255), "R": (200, 0, 255), None: (170, 170, 170)}
