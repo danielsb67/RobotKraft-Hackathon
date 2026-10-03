@@ -101,7 +101,7 @@ ports-diff: ## Montre le port apparu ou disparu depuis ports-snapshot
 
 cameras: need-image prep ## Liste les caméras, capture une image de chacune dans outputs/cam_check/
 	$(call run,$(DEV_ALL_VIDEO) $(DEV_OAK)) python3 scripts/detect_cameras.py \
-		--width $(CAM_WIDTH) --height $(CAM_HEIGHT) --fps $(CAM_FPS) --wrist $(WRIST_CAM) --out outputs/cam_check
+		--width $(CAM_WIDTH) --height $(CAM_HEIGHT) --fps $(CAM_FPS) --wrist $(WRIST_CAM) --ignore "$(CAM_IGNORE)" --out outputs/cam_check
 
 hf-login: need-image prep ## [terminal] Connexion Hugging Face (token dans .cache/, jamais dans le repo)
 	$(call run,) hf auth login

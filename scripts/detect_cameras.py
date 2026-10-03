@@ -110,13 +110,18 @@ def main():
     ap.add_argument("--height", type=int, default=480)
     ap.add_argument("--fps", type=int, default=30)
     ap.add_argument("--wrist", default="", help="chemin configuré pour camera2 (WRIST_CAM)")
+    ap.add_argument("--ignore", default="", help="caméras à ne pas ouvrir : morceaux de nom séparés par des virgules")
     ap.add_argument("--out", default="outputs/cam_check")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
     stable = by_id_names()
     results = []  # (étiquette, device, chemin stable, image BGR, débit, erreur)
+    ignored = [w.strip().lower() for w in args.ignore.split(",") if w.strip()]
     for dev, name in v4l_capture_nodes():
+        if any(w in name.lower() for w in ignored):
+            print(f"Ignorée (CAM_IGNORE) : {name} ({dev})")
+            continue
         frame, rate, err = grab_v4l(dev, args.width, args.height, args.fps)
         results.append((name, dev, stable.get(dev, "-"), frame, rate, err))
     if oak_present():
