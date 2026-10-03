@@ -16,6 +16,11 @@ with dai.Pipeline() as pipeline:
     while pipeline.isRunning():
         frame = queue.get().getCvFrame()
         cv2.imshow(WIN, frame)
-        if cv2.waitKey(1) & 0xFF == ord("q") or cv2.getWindowProperty(WIN, cv2.WND_PROP_VISIBLE) == 0:
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
+        try:  # fenêtre fermée à la souris : selon le backend, 0 ou une exception
+            if cv2.getWindowProperty(WIN, cv2.WND_PROP_VISIBLE) < 1:
+                break
+        except cv2.error:
             break
 cv2.destroyAllWindows()
