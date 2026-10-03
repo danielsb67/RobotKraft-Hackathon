@@ -69,7 +69,7 @@ CONDITION ?= nominal
 .PHONY: help install install-native install-cuda doctor ports ports-snapshot ports-diff cameras view-oak view-wrist oak-angle hf-login hf-whoami \
 	udev import-calib calib-status calibrate-follower calibrate-leader teleop \
 	record record-resume record-tri rec tri-b tri-j tri-r check-dataset view-dataset delete-episodes push-dataset train-cmd train train-act train-resume train-hf-job push-model \
-	rollout tri tri-calib tri-voir etiquette etiquette-calib etiquette-voir etiq-rec etiq-saisir etiq-montrer etiq-reposer install-epreuves need-epreuves oak-bridge-start oak-bridge-stop policy-server rollout-async eval-log eval-report setup-motors prep \
+	rollout tri tri-calib tri-voir etiquette etiquette-calib etiquette-voir etiq-rec etiq-saisir etiq-regarder etiq-montrer etiq-reposer install-epreuves need-epreuves oak-bridge-start oak-bridge-stop policy-server rollout-async eval-log eval-report setup-motors prep \
 	need-follower need-leader need-wrist need-oak need-hf-user need-image need-calib need-calib-follower
 
 help: ## Affiche cette aide
@@ -311,8 +311,10 @@ SKILL_REC = $(MAKE) --no-print-directory rec N=$(N) EPISODE_TIME_S=$(SKILL_TIME_
 etiq-saisir: need-hf-user ## [terminal] ETIQ 1/3 : repos -> tube de la place k saisi et levé : make etiq-saisir PLACE=3 N=5
 	@[ -n "$(PLACE)" ] || { echo "ERREUR : PLACE=1..6"; exit 1; }
 	@$(SKILL_REC) TASK_NAME=etiq_saisir TASK_TEXT="$(subst {k},$(PLACE),$(ETIQ_TEXT_SLOT))"
-etiq-montrer: need-hf-user ## [terminal] ETIQ 2/3 : tube levé -> tenu devant l'OAK, étiquette vers elle : make etiq-montrer N=5
-	@$(SKILL_REC) TASK_NAME=etiq_montrer TASK_TEXT="$(ETIQ_TEXT_SHOW)"
+etiq-regarder: need-hf-user ## [terminal] ETIQ lire : repos -> caméra poignet au-dessus du rack, immobile : make etiq-regarder N=5
+	@$(SKILL_REC) TASK_NAME=etiq_lire TASK_TEXT="$(ETIQ_TEXT_LOOK)"
+etiq-montrer: need-hf-user ## [terminal] ETIQ lire : tube levé -> tourné lentement devant l'OAK : make etiq-montrer N=5
+	@$(SKILL_REC) TASK_NAME=etiq_lire TASK_TEXT="$(ETIQ_TEXT_SHOW)"
 etiq-reposer: need-hf-user ## [terminal] ETIQ 3/3 : devant l'OAK -> remis en place k -> repos : make etiq-reposer PLACE=3 N=5
 	@[ -n "$(PLACE)" ] || { echo "ERREUR : PLACE=1..6"; exit 1; }
 	@$(SKILL_REC) TASK_NAME=etiq_reposer TASK_TEXT="$(subst {k},$(PLACE),$(ETIQ_TEXT_PLACE))"
