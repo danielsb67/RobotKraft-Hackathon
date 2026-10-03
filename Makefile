@@ -145,11 +145,12 @@ teleop: need-follower need-leader need-calib need-image prep ## [terminal] Le fo
 ##@ Phase 2 — Enregistrement du dataset
 record: need-hf-user need-follower need-leader need-wrist need-oak need-calib need-image prep ## [terminal] lerobot-record : NUM_EPISODES épisodes, camera1 + camera2
 	@[ -n "$(RECORD_EXTRA)" ] || [ ! -e $(DATASET_DIR) ] || { echo "ERREUR : $(DATASET_DIR) existe déjà. make record-resume pour compléter, ou change TASK_NAME."; exit 1; }
+	@[ ! -s $(DATASET_DIR)/meta/info.json ] || python3 -c "import json,sys; f=json.load(open('$(DATASET_DIR)/meta/info.json'))['fps']; f==$(REC_FPS) or sys.exit(f'ERREUR : $(DATASET_REPO_ID) est enregistré à {f} fps, REC_FPS=$(REC_FPS). Change TASK_NAME (nouveau dataset) ou mets REC_FPS={f}.')"
 	$(call run,$(DEV_FOLLOWER) $(DEV_LEADER) $(DEV_WRIST) $(DEV_OAK) $(DEV_X11) $(OAK_ENV)) bash scripts/with_oak.sh lerobot-record \
 		$(ROBOT_ARGS) $(TELEOP_ARGS) '--robot.cameras=$(CAMERAS)' \
 		--dataset.repo_id=$(DATASET_REPO_ID) \
 		--dataset.single_task="$(TASK_TEXT)" \
-		--dataset.fps=$(CAM_FPS) \
+		--dataset.fps=$(REC_FPS) \
 		--dataset.num_episodes=$(NUM_EPISODES) \
 		--dataset.episode_time_s=$(EPISODE_TIME_S) \
 		--dataset.reset_time_s=$(RESET_TIME_S) \
@@ -182,7 +183,7 @@ tri-r: need-hf-user ## [terminal] TRI : N tubes ROUGES, temps affiché : make tr
 
 check-dataset: need-hf-user need-image prep ## Valide le dataset, trace les trajectoires (outputs/dataset_check/)
 	$(call run,) python3 tools/check_dataset.py --repo-id $(DATASET_REPO_ID) \
-		--fps $(CAM_FPS) --width $(CAM_WIDTH) --height $(CAM_HEIGHT) \
+		--fps $(REC_FPS) --width $(CAM_WIDTH) --height $(CAM_HEIGHT) \
 		--task "$(TASK_TEXT)" --expected-episodes $(NUM_EPISODES) \
 		--out outputs/dataset_check/$(subst /,__,$(DATASET_REPO_ID))
 
@@ -271,7 +272,7 @@ rollout: need-hf-user need-follower need-wrist need-oak need-calib-follower need
 		--policy.path=$(POLICY_PATH) --policy.device=$(POLICY_DEVICE) \
 		--dataset.repo_id=$(EVAL_REPO_ID) \
 		--dataset.single_task="$(TASK_TEXT)" \
-		--dataset.fps=$(CAM_FPS) \
+		--dataset.fps=$(REC_FPS) \
 		--dataset.num_episodes=$(EVAL_EPISODES) \
 		--dataset.episode_time_s=$(EVAL_EPISODE_TIME_S) \
 		--dataset.reset_time_s=$(EVAL_RESET_TIME_S) \
@@ -280,7 +281,7 @@ rollout: need-hf-user need-follower need-wrist need-oak need-calib-follower need
 
 policy-server: prep ## Machine GPU : serveur d'inférence asynchrone officiel (port 8080)
 	$(if $(filter docker,$(RUNNER)),$(DOCKER_RUN) --gpus all -p 8080:8080 $(TRAIN_IMAGE)) \
-		python3 -m lerobot.async_inference.policy_server --host=0.0.0.0 --port=8080 --fps=$(CAM_FPS)
+		python3 -m lerobot.async_inference.policy_server --host=0.0.0.0 --port=8080 --fps=$(REC_FPS)
 
 rollout-async: need-follower need-wrist need-oak need-calib-follower need-image prep ## [terminal] Rollout avec inférence sur la machine GPU : ASYNC_SERVER=ip:8080 (tunnel SSH : localhost:8080)
 	@[ -n "$(ASYNC_SERVER)" ] || { echo "ERREUR : précise ASYNC_SERVER=ip:8080 (machine qui fait tourner make policy-server)"; exit 1; }
@@ -289,7 +290,7 @@ rollout-async: need-follower need-wrist need-oak need-calib-follower need-image 
 		$(ROBOT_ARGS) '--robot.cameras=$(CAMERAS)' \
 		--task="$(TASK_TEXT)" --server_address=$(ASYNC_SERVER) \
 		--policy_type=smolvla --pretrained_name_or_path=$(ASYNC_POLICY) --policy_device=cuda \
-		--actions_per_chunk=50 --chunk_size_threshold=0.5 --fps=$(CAM_FPS)
+		--actions_per_chunk=50 --chunk_size_threshold=0.5 --fps=$(REC_FPS)
 
 eval-log: ## [terminal] Note chaque essai : make eval-log RUN=v1 CONDITION=nominal
 	python3 tools/eval_logger.py log --run "$(RUN)" --condition "$(CONDITION)" --policy "$(POLICY_PATH)" --task "$(TASK_TEXT)"
