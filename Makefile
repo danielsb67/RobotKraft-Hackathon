@@ -69,7 +69,7 @@ CONDITION ?= nominal
 .PHONY: help install install-native install-cuda doctor ports ports-snapshot ports-diff cameras view-oak view-wrist oak-angle hf-login hf-whoami \
 	udev import-calib calib-status calibrate-follower calibrate-leader teleop \
 	record record-resume record-tri rec tri-b tri-j tri-r check-dataset view-dataset delete-episodes push-dataset train-cmd train train-act train-resume train-hf-job push-model \
-	rollout tri tri-calib tri-voir etiquette etiquette-calib etiquette-voir etiq-rec etiq-saisir etiq-regarder etiq-montrer etiq-reposer install-epreuves need-epreuves oak-bridge-start oak-bridge-stop policy-server rollout-async eval-log eval-report setup-motors prep \
+	rollout policy-local tri tri-calib tri-voir etiquette etiquette-calib etiquette-voir etiq-rec etiq-saisir etiq-regarder etiq-montrer etiq-reposer install-epreuves need-epreuves oak-bridge-start oak-bridge-stop policy-server rollout-async eval-log eval-report setup-motors prep \
 	need-follower need-leader need-wrist need-oak need-hf-user need-image need-calib need-calib-follower
 
 help: ## Affiche cette aide
@@ -338,6 +338,10 @@ rollout: need-hf-user need-follower need-wrist need-oak need-calib-follower need
 		--dataset.reset_time_s=$(EVAL_RESET_TIME_S) \
 		--dataset.push_to_hub=false --dataset.streaming_encoding=true \
 		--display_data=false --play_sounds=false
+
+policy-local: need-image prep ## Copie locale d'un modèle du Hub lisible par le LeRobot du PC : make policy-local POLICY=dbal67/Robotkraft_TRI_v2
+	@[ -n "$(POLICY)" ] || { echo "ERREUR : précise POLICY=dépôt du Hub"; exit 1; }
+	$(call run,) python3 scripts/policy_local.py $(POLICY)
 
 oak-bridge-start: need-oak need-image prep ## Pont OAK permanent (épreuves) : camera1 sur localhost:5555, partagée vision + modèle
 	@if docker ps -q -f name='^rk-oak$$' | grep -q .; then echo "Pont OAK déjà lancé (rk-oak)"; else \
