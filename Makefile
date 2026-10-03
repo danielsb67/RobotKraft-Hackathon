@@ -62,7 +62,7 @@ CONDITION ?= nominal
 
 .PHONY: help install install-native install-cuda doctor ports ports-snapshot ports-diff cameras view-oak view-wrist oak-angle hf-login hf-whoami \
 	udev import-calib calib-status calibrate-follower calibrate-leader teleop \
-	record record-resume record-tri tri-b tri-j tri-r check-dataset view-dataset delete-episodes push-dataset train-cmd train train-act train-resume train-hf-job push-model \
+	record record-resume record-tri rec tri-b tri-j tri-r check-dataset view-dataset delete-episodes push-dataset train-cmd train train-act train-resume train-hf-job push-model \
 	rollout policy-server rollout-async eval-log eval-report setup-motors prep \
 	need-follower need-leader need-wrist need-oak need-hf-user need-image need-calib need-calib-follower
 
@@ -166,12 +166,19 @@ record-tri: need-hf-user ## [terminal] Épreuve TRI : SEQ=BBJRRR = couleurs dans
 	python3 scripts/tri_record.py --seq $(SEQ) --task-name $(TASK_NAME) --dataset-dir $(DATASET_DIR) \
 		--text-b "$(TRI_TEXT_B)" --text-j "$(TRI_TEXT_J)" --text-r "$(TRI_TEXT_R)" $(if $(DRY),--dry-run)
 
-tri-b: ## [terminal] TRI : 1 épisode, un tube BLEU dans la place libre la plus à gauche
-	@$(MAKE) --no-print-directory record-tri SEQ=B
-tri-j: ## [terminal] TRI : 1 épisode, un tube JAUNE dans la place libre la plus à gauche
-	@$(MAKE) --no-print-directory record-tri SEQ=J
-tri-r: ## [terminal] TRI : 1 épisode, un tube ROUGE dans la place libre la plus à gauche
-	@$(MAKE) --no-print-directory record-tri SEQ=R
+# Enregistrement avec temps qui défile : N épisodes, pause RESET_TIME_S entre deux, dataset créé ou complété.
+N ?= 1
+REC_LIVE = python3 scripts/record_live.py --n $(N) --episode-s $(EPISODE_TIME_S) --reset-s $(RESET_TIME_S) --dataset-dir $(DATASET_DIR)
+REC_TARGET = $(if $(wildcard $(DATASET_DIR)/meta/info.json),record-resume,record)
+
+rec: need-hf-user ## [terminal] N épisodes (TASK_TEXT), temps affiché en direct : make rec N=10
+	@$(REC_LIVE) -- $(MAKE) --no-print-directory $(REC_TARGET) NUM_EPISODES=$(N) TASK_TEXT="$(TASK_TEXT)"
+tri-b: need-hf-user ## [terminal] TRI : N tubes BLEUS, temps affiché : make tri-b N=5
+	@$(REC_LIVE) --label bleu -- $(MAKE) --no-print-directory $(REC_TARGET) NUM_EPISODES=$(N) TASK_TEXT="$(TRI_TEXT_B)"
+tri-j: need-hf-user ## [terminal] TRI : N tubes JAUNES, temps affiché : make tri-j N=5
+	@$(REC_LIVE) --label jaune -- $(MAKE) --no-print-directory $(REC_TARGET) NUM_EPISODES=$(N) TASK_TEXT="$(TRI_TEXT_J)"
+tri-r: need-hf-user ## [terminal] TRI : N tubes ROUGES, temps affiché : make tri-r N=5
+	@$(REC_LIVE) --label rouge -- $(MAKE) --no-print-directory $(REC_TARGET) NUM_EPISODES=$(N) TASK_TEXT="$(TRI_TEXT_R)"
 
 check-dataset: need-hf-user need-image prep ## Valide le dataset, trace les trajectoires (outputs/dataset_check/)
 	$(call run,) python3 tools/check_dataset.py --repo-id $(DATASET_REPO_ID) \
