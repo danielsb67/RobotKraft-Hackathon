@@ -58,7 +58,7 @@ EVAL_REPO_ID   = $(HF_USER)/eval_$(TASK_NAME)_$(shell date +%m%d_%H%M%S)
 RUN       ?= $(TASK_NAME)
 CONDITION ?= nominal
 
-.PHONY: help install install-native install-cuda doctor ports ports-snapshot ports-diff cameras view-oak hf-login hf-whoami \
+.PHONY: help install install-native install-cuda doctor ports ports-snapshot ports-diff cameras view-oak view-wrist hf-login hf-whoami \
 	udev import-calib calib-status calibrate-follower calibrate-leader teleop \
 	record record-resume check-dataset push-dataset train-cmd train train-act train-resume train-hf-job push-model \
 	rollout policy-server rollout-async eval-log eval-report setup-motors prep \
@@ -105,6 +105,9 @@ cameras: need-image prep ## Liste les caméras, capture une image de chacune dan
 
 view-oak: need-oak need-image prep ## Aperçu en direct de camera1 (OAK-D) pour régler le cadrage
 	$(call run,$(DEV_OAK) $(DEV_X11) $(OAK_ENV)) python3 scripts/view_oak.py
+
+view-wrist: need-wrist need-image prep ## Aperçu en direct de camera2 (poignet) : mise au point, orientation
+	$(call run,$(DEV_WRIST) $(DEV_X11) $(OAK_ENV)) python3 scripts/view_wrist.py $(WRIST_CAM)
 
 hf-login: need-image prep ## [terminal] Connexion Hugging Face (token dans .cache/, jamais dans le repo)
 	$(call run,) hf auth login
