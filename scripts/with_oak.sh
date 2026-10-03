@@ -27,6 +27,19 @@ start_bridge() {
     return 1
 }
 
+# Pont déjà actif sur ce port (pont permanent des épreuves, make oak-bridge-start) : on le réutilise.
+if python3 - <<PY 2>/dev/null
+import sys, zmq
+s = zmq.Context().socket(zmq.SUB); s.setsockopt(zmq.LINGER, 0); s.setsockopt_string(zmq.SUBSCRIBE, "")
+s.connect("tcp://127.0.0.1:${CAM1_ZMQ_PORT:-5555}")
+sys.exit(0 if s.poll(2500) else 1)
+PY
+then
+    echo "OAK-D : pont déjà actif sur le port ${CAM1_ZMQ_PORT:-5555}, réutilisé" >&2
+    "$@"
+    exit $?
+fi
+
 for try in $(seq 1 "$OAK_TRIES"); do
     start_bridge && break
     stop_bridge

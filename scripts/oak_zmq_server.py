@@ -26,18 +26,21 @@ context = zmq.Context()
 socket = context.socket(zmq.PUB)
 socket.setsockopt(zmq.SNDHWM, 20)  # borne la file d'envoi
 socket.setsockopt(zmq.LINGER, 0)  # close() n'attend pas les messages en attente
-socket.bind(f"tcp://*:{PORT}")
+socket.bind(f"tcp://127.0.0.1:{PORT}")  # local seulement (réseau de l'hôte partagé)
 
-with dai.Pipeline() as pipeline:
-    cam = pipeline.create(dai.node.Camera).build()
-    # Capteur 4:3 de l'OAK-D Lite : 640x480 garde tout le champ ; un autre ratio est recadré.
-    queue = cam.requestOutput((WIDTH, HEIGHT), fps=FPS).createOutputQueue()
-    pipeline.start()
-    for _ in range(10):  # laisse l'auto-exposition se stabiliser
-        queue.get()
-    open(READY_FILE, "w").close()
-    print(f"OAK-D -> ZMQ tcp://*:{PORT} camera_name={NAME} {WIDTH}x{HEIGHT}@{FPS}", flush=True)
-    try:
+RETRIES = int(os.environ.get("OAK_RETRIES", 4))  # essais d'ouverture ; OAK_PERSIST=1 : se relance indéfiniment
+
+
+def serve():
+    with dai.Pipeline() as pipeline:
+        cam = pipeline.create(dai.node.Camera).build()
+        # Capteur 4:3 de l'OAK-D Lite : 640x480 garde tout le champ ; un autre ratio est recadré.
+        queue = cam.requestOutput((WIDTH, HEIGHT), fps=FPS).createOutputQueue()
+        pipeline.start()
+        for _ in range(10):  # laisse l'auto-exposition se stabiliser
+            queue.get()
+        open(READY_FILE, "w").close()
+        print(f"OAK-D -> ZMQ tcp://127.0.0.1:{PORT} camera_name={NAME} {WIDTH}x{HEIGHT}@{FPS}", flush=True)
         while pipeline.isRunning():
             t0 = time.time()
             bgr = queue.get().getCvFrame()
@@ -53,10 +56,28 @@ with dai.Pipeline() as pipeline:
             sleep = 1.0 / FPS - (time.time() - t0)
             if sleep > 0:
                 time.sleep(sleep)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        socket.close()
-        context.term()
-        if os.path.exists(READY_FILE):
-            os.remove(READY_FILE)
+
+
+# L'OAK plante parfois (lien USB 2) : on attend qu'elle redémarre sur l'USB et on rouvre.
+failures = 0
+try:
+    while True:
+        try:
+            serve()
+            failures = 0
+        except RuntimeError as e:
+            failures += 1
+            persist = os.environ.get("OAK_PERSIST") == "1"
+            print(f"OAK-D : {e} (échec {failures}{'' if persist else f'/{RETRIES}'}), nouvel essai dans 6 s", flush=True)
+            if os.path.exists(READY_FILE):
+                os.remove(READY_FILE)
+            if not persist and failures >= RETRIES:
+                raise
+            time.sleep(6)
+except KeyboardInterrupt:
+    pass
+finally:
+    socket.close()
+    context.term()
+    if os.path.exists(READY_FILE):
+        os.remove(READY_FILE)

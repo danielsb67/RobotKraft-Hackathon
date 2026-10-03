@@ -17,9 +17,10 @@ include config/robotkraft.env
 # ---------------------------------------------------------------------------
 TTY_FLAGS := $(shell [ -t 0 ] && echo -it || echo -i)
 GROUP_ADD := $(foreach g,dialout video plugdev,$(if $(shell getent group $(g)),--group-add $(shell getent group $(g) | cut -d: -f3)))
-DOCKER_RUN = docker run --rm --init $(TTY_FLAGS) --user $(shell id -u):$(shell id -g) $(GROUP_ADD) \
+DOCKER_OPTS = --user $(shell id -u):$(shell id -g) $(GROUP_ADD) \
 	-e HOME=/workspace/.cache/home -e USER=$(shell id -un) -e LOGNAME=$(shell id -un) -v $(CURDIR):/workspace/robotkraft -w /workspace/robotkraft \
 	-v $(abspath $(CACHE_DIR)):/workspace/.cache --shm-size=2g
+DOCKER_RUN = docker run --rm --init $(TTY_FLAGS) $(DOCKER_OPTS)
 
 export CAM_WIDTH CAM_HEIGHT CAM_FPS CAM1_ZMQ_PORT CAM1_ZMQ_NAME
 ifeq ($(RUNNER),native)
@@ -39,13 +40,18 @@ DEV_FOLLOWER = --device $(FOLLOWER_PORT):$(FOLLOWER_PORT)
 DEV_LEADER   = --device $(LEADER_PORT):$(LEADER_PORT)
 DEV_WRIST    = --device $(WRIST_CAM):$(WRIST_CAM)
 # OAK-D : depthai redémarre le device USB (nouveau nœud) -> tout /dev/bus/usb + règle cgroup.
-DEV_OAK      = -v /dev/bus/usb:/dev/bus/usb --device-cgroup-rule='c 189:* rmw'
+# Réseau de l'hôte : le pont OAK (localhost:5555) est partagé entre conteneurs (pont permanent des épreuves).
+DEV_OAK      = --network host -v /dev/bus/usb:/dev/bus/usb --device-cgroup-rule='c 189:* rmw'
 DEV_ALL_VIDEO = $(foreach d,$(wildcard /dev/video*),--device $(d):$(d)) $(if $(wildcard /dev/v4l/by-id),-v /dev/v4l:/host-v4l:ro)
 # X11 : nécessaire aux touches de lerobot-record (→ ← Échap, via pynput).
 DEV_X11      = -e DISPLAY=$(DISPLAY) -v /tmp/.X11-unix:/tmp/.X11-unix:ro $(if $(XAUTHORITY),-e XAUTHORITY=/tmp/.Xauthority -v $(XAUTHORITY):/tmp/.Xauthority:ro)
 OAK_ENV      = -e CAM_WIDTH=$(CAM_WIDTH) -e CAM_HEIGHT=$(CAM_HEIGHT) -e CAM_FPS=$(CAM_FPS) -e CAM1_ZMQ_PORT=$(CAM1_ZMQ_PORT) -e CAM1_ZMQ_NAME=$(CAM1_ZMQ_NAME)
 
 ROBOT_ARGS  = --robot.type=so101_follower --robot.port=$(FOLLOWER_PORT) --robot.id=$(FOLLOWER_ID)
+# Options du follower en plus (épreuves : --robot.disable_torque_on_disconnect=false, le bras tient sa pose entre deux essais).
+ROBOT_EXTRA ?=
+# rollout-async : arrêt du client au bout de ROLLOUT_DURATION_S secondes (0 = jamais, Ctrl+C).
+ROLLOUT_DURATION_S ?= 0
 TELEOP_ARGS = --teleop.type=so101_leader --teleop.port=$(LEADER_PORT) --teleop.id=$(LEADER_ID)
 # Noms camera1/camera2 dès l'enregistrement = clés de lerobot/smolvla_base, sans rename_map.
 CAMERAS = {camera1: {type: zmq, server_address: localhost, port: $(CAM1_ZMQ_PORT), camera_name: $(CAM1_ZMQ_NAME), width: $(CAM_WIDTH), height: $(CAM_HEIGHT), fps: $(CAM_FPS)}, camera2: {type: opencv, index_or_path: $(WRIST_CAM), fourcc: MJPG, width: $(CAM_WIDTH), height: $(CAM_HEIGHT), fps: $(CAM_FPS)}}
@@ -63,7 +69,7 @@ CONDITION ?= nominal
 .PHONY: help install install-native install-cuda doctor ports ports-snapshot ports-diff cameras view-oak view-wrist oak-angle hf-login hf-whoami \
 	udev import-calib calib-status calibrate-follower calibrate-leader teleop \
 	record record-resume record-tri rec tri-b tri-j tri-r check-dataset view-dataset delete-episodes push-dataset train-cmd train train-act train-resume train-hf-job push-model \
-	rollout policy-server rollout-async eval-log eval-report setup-motors prep \
+	rollout tri tri-calib tri-voir etiquette etiquette-calib etiquette-voir etiq-rec install-epreuves need-epreuves oak-bridge-start oak-bridge-stop policy-server rollout-async eval-log eval-report setup-motors prep \
 	need-follower need-leader need-wrist need-oak need-hf-user need-image need-calib need-calib-follower
 
 help: ## Affiche cette aide
@@ -172,14 +178,17 @@ N ?= 1
 REC_LIVE = python3 scripts/record_live.py --n $(N) --episode-s $(EPISODE_TIME_S) --reset-s $(RESET_TIME_S) --dataset-dir $(DATASET_DIR)
 REC_TARGET = $(if $(wildcard $(DATASET_DIR)/meta/info.json),record-resume,record)
 
+# Datasets de l'épreuve TRI : TRI_TASK_NAME (TASK_NAME=... sur la ligne de commande l'emporte).
+tri-b tri-j tri-r: TASK_NAME=$(TRI_TASK_NAME)
+
 rec: need-hf-user ## [terminal] N épisodes (TASK_TEXT), temps affiché en direct : make rec N=10
-	@$(REC_LIVE) -- $(MAKE) --no-print-directory $(REC_TARGET) NUM_EPISODES=$(N) TASK_TEXT="$(TASK_TEXT)"
+	@$(REC_LIVE) -- $(MAKE) --no-print-directory $(REC_TARGET) TASK_NAME=$(TASK_NAME) NUM_EPISODES=$(N) TASK_TEXT="$(TASK_TEXT)"
 tri-b: need-hf-user ## [terminal] TRI : N tubes BLEUS, temps affiché : make tri-b N=5
-	@$(REC_LIVE) --label bleu -- $(MAKE) --no-print-directory $(REC_TARGET) NUM_EPISODES=$(N) TASK_TEXT="$(TRI_TEXT_B)"
+	@$(REC_LIVE) --label bleu -- $(MAKE) --no-print-directory $(REC_TARGET) TASK_NAME=$(TASK_NAME) NUM_EPISODES=$(N) TASK_TEXT="$(TRI_TEXT_B)"
 tri-j: need-hf-user ## [terminal] TRI : N tubes JAUNES, temps affiché : make tri-j N=5
-	@$(REC_LIVE) --label jaune -- $(MAKE) --no-print-directory $(REC_TARGET) NUM_EPISODES=$(N) TASK_TEXT="$(TRI_TEXT_J)"
+	@$(REC_LIVE) --label jaune -- $(MAKE) --no-print-directory $(REC_TARGET) TASK_NAME=$(TASK_NAME) NUM_EPISODES=$(N) TASK_TEXT="$(TRI_TEXT_J)"
 tri-r: need-hf-user ## [terminal] TRI : N tubes ROUGES, temps affiché : make tri-r N=5
-	@$(REC_LIVE) --label rouge -- $(MAKE) --no-print-directory $(REC_TARGET) NUM_EPISODES=$(N) TASK_TEXT="$(TRI_TEXT_R)"
+	@$(REC_LIVE) --label rouge -- $(MAKE) --no-print-directory $(REC_TARGET) TASK_NAME=$(TASK_NAME) NUM_EPISODES=$(N) TASK_TEXT="$(TRI_TEXT_R)"
 
 check-dataset: need-hf-user need-image prep ## Valide le dataset, trace les trajectoires (outputs/dataset_check/)
 	$(call run,) python3 tools/check_dataset.py --repo-id $(DATASET_REPO_ID) \
@@ -264,11 +273,49 @@ train-hf-job: need-hf-user need-image prep ## PAYANT : entraînement HF Jobs, re
 push-model: need-hf-user need-image prep ## Pousse le dernier checkpoint local (TRAIN_OUTPUT_DIR) sur le Hub
 	$(call run,) hf upload $(MODEL_REPO_ID) $(TRAIN_OUTPUT_DIR)/checkpoints/last/pretrained_model --repo-type model $(if $(filter true,$(HUB_PRIVATE)),--private)
 
+##@ Épreuves — un workflow complet par épreuve (vision + modèle + vérification + reprise)
+EP_PY = env -u PYTHONPATH .venv-epreuves/bin/python
+EPREUVE_SECONDS ?= $(if $(ASYNC_SERVER),25,90)
+EP_COMMON = --seconds $(EPREUVE_SECONDS) --async-server "$(ASYNC_SERVER)" --max-tries $(MAX_TRIES) $(if $(DRY),--dry-run)
+ORDER ?= $(TRI_ORDER)
+
+install-epreuves: ## Python des épreuves (vision, lecture d'étiquettes, MQTT) dans .venv-epreuves
+	python3 -m venv .venv-epreuves && env -u PYTHONPATH .venv-epreuves/bin/pip install -q opencv-python numpy pyzmq rapidocr-onnxruntime paho-mqtt
+
+need-epreuves:
+	@[ -x .venv-epreuves/bin/python ] || { echo "ERREUR : make install-epreuves d'abord"; exit 1; }
+
+tri: need-epreuves need-follower need-wrist need-oak need-calib-follower need-image prep ## [terminal] Épreuve TRI complète : make tri ORDER=BJR (DRY=1 : sans bouger le bras)
+	$(EP_PY) epreuves/tri.py run --order $(ORDER) --policy $(TRI_POLICY) --fps $(TRI_POLICY_FPS) $(EP_COMMON) \
+		--text-b "$(TRI_TEXT_B)" --text-j "$(TRI_TEXT_J)" --text-r "$(TRI_TEXT_R)"
+
+tri-calib: need-epreuves need-oak need-image prep ## TRI : cliquer les 6 places du porte-tubes et la zone de la table (une fois)
+	$(EP_PY) epreuves/tri.py calib
+
+tri-voir: need-epreuves need-oak need-image prep ## TRI : vision en direct (couleurs vues sur la table et dans le porte-tubes)
+	$(EP_PY) epreuves/tri.py voir
+
+etiquette: need-epreuves need-follower need-wrist need-oak need-calib-follower need-image prep ## [terminal] Épreuve ETIQ : make etiquette MOT=IODURE [OU=rack|table] [LECTURE_CAM=oak|poignet]
+	@[ -n "$(MOT)" ] || { echo "ERREUR : précise le mot, ex. make etiquette MOT=IODURE"; exit 1; }
+	$(EP_PY) epreuves/etiq.py run --mot "$(MOT)" --ou $(or $(OU),rack) --lecture $(LECTURE_CAM) --policy $(ETIQ_POLICY) --fps $(ETIQ_POLICY_FPS) \
+		$(subst --fps-rec $(REC_FPS) ,,$(EP_COMMON)) --text-slot "$(ETIQ_TEXT_SLOT)" --text-zone "$(ETIQ_TEXT_ZONE)"
+
+etiquette-calib: need-epreuves need-oak need-image prep ## ETIQ : cliquer les places du rack et les zones de la table (une fois)
+	$(EP_PY) epreuves/etiq.py calib
+
+etiquette-voir: need-epreuves need-image prep ## ETIQ : lecture des étiquettes en direct (LECTURE_CAM=oak|poignet)
+	$(EP_PY) epreuves/etiq.py voir --lecture $(LECTURE_CAM)
+
+etiq-rec: need-hf-user ## [terminal] ETIQ : N saisies enregistrées, PLACE=k (rack) ou ZONE=k (table) : make etiq-rec PLACE=3 N=5
+	@[ -n "$(PLACE)$(ZONE)" ] || { echo "ERREUR : PLACE=1..6 (tube du rack) ou ZONE=k (objet sur la table)"; exit 1; }
+	@$(MAKE) --no-print-directory rec TASK_NAME=$(ETIQ_TASK_NAME) N=$(N) \
+		TASK_TEXT="$(subst {k},$(or $(PLACE),$(ZONE)),$(if $(PLACE),$(ETIQ_TEXT_SLOT),$(ETIQ_TEXT_ZONE)))"
+
 ##@ Phase 4 — Rollout et taux de succès
 rollout: need-hf-user need-follower need-wrist need-oak need-calib-follower need-image prep ## [terminal] La policy pilote le follower, EVAL_EPISODES essais
 	@[[ "$(POLICY_PATH)" != outputs/* ]] || [ -s $(POLICY_PATH)/config.json ] || { echo "ERREUR : policy introuvable : $(POLICY_PATH)"; exit 1; }
 	$(call run_policy,$(DEV_FOLLOWER) $(DEV_WRIST) $(DEV_OAK) $(DEV_X11) $(OAK_ENV)) bash scripts/with_oak.sh lerobot-record \
-		$(ROBOT_ARGS) '--robot.cameras=$(CAMERAS)' \
+		$(ROBOT_ARGS) $(ROBOT_EXTRA) '--robot.cameras=$(CAMERAS)' \
 		--policy.path=$(POLICY_PATH) --policy.device=$(POLICY_DEVICE) \
 		--dataset.repo_id=$(EVAL_REPO_ID) \
 		--dataset.single_task="$(TASK_TEXT)" \
@@ -279,15 +326,23 @@ rollout: need-hf-user need-follower need-wrist need-oak need-calib-follower need
 		--dataset.push_to_hub=false --dataset.streaming_encoding=true \
 		--display_data=false --play_sounds=false
 
+oak-bridge-start: need-oak need-image prep ## Pont OAK permanent (épreuves) : camera1 sur localhost:5555, partagée vision + modèle
+	@if docker ps -q -f name='^rk-oak$$' | grep -q .; then echo "Pont OAK déjà lancé (rk-oak)"; else \
+		docker run -d --rm --init --name rk-oak $(DOCKER_OPTS) $(DEV_OAK) $(OAK_ENV) -e OAK_READY_FILE=/tmp/oak_ready_bridge -e OAK_PERSIST=1 -e PYTHONUNBUFFERED=1 \
+		$(IMAGE) python3 scripts/oak_zmq_server.py >/dev/null && echo "Pont OAK lancé (rk-oak)"; fi
+
+oak-bridge-stop: ## Arrête le pont OAK permanent
+	@docker stop rk-oak >/dev/null 2>&1 && echo "Pont OAK arrêté" || echo "Pont OAK pas lancé"
+
 policy-server: prep ## Machine GPU : serveur d'inférence asynchrone officiel (port 8080)
 	$(if $(filter docker,$(RUNNER)),$(DOCKER_RUN) --gpus all -p 8080:8080 $(TRAIN_IMAGE)) \
 		python3 -m lerobot.async_inference.policy_server --host=0.0.0.0 --port=8080 --fps=$(REC_FPS)
 
 rollout-async: need-follower need-wrist need-oak need-calib-follower need-image prep ## [terminal] Rollout avec inférence sur la machine GPU : ASYNC_SERVER=ip:8080 (tunnel SSH : localhost:8080)
 	@[ -n "$(ASYNC_SERVER)" ] || { echo "ERREUR : précise ASYNC_SERVER=ip:8080 (machine qui fait tourner make policy-server)"; exit 1; }
-	$(call run,--network host $(DEV_FOLLOWER) $(DEV_WRIST) $(DEV_OAK) $(OAK_ENV)) bash scripts/with_oak.sh \
+	$(call run,-e ROLLOUT_DURATION_S=$(ROLLOUT_DURATION_S) $(DEV_FOLLOWER) $(DEV_WRIST) $(DEV_OAK) $(OAK_ENV)) bash scripts/with_oak.sh \
 		python3 scripts/robot_client_zmq.py \
-		$(ROBOT_ARGS) '--robot.cameras=$(CAMERAS)' \
+		$(ROBOT_ARGS) $(ROBOT_EXTRA) '--robot.cameras=$(CAMERAS)' \
 		--task="$(TASK_TEXT)" --server_address=$(ASYNC_SERVER) \
 		--policy_type=smolvla --pretrained_name_or_path=$(ASYNC_POLICY) --policy_device=cuda \
 		--actions_per_chunk=50 --chunk_size_threshold=0.5 --fps=$(REC_FPS)
@@ -297,6 +352,10 @@ eval-log: ## [terminal] Note chaque essai : make eval-log RUN=v1 CONDITION=nomin
 
 eval-report: ## Tableau et graphique des taux de succès (outputs/eval/)
 	python3 tools/eval_logger.py report
+
+# Valeur d'une variable (utilisé par epreuves/commun.py) : make -s print-WRIST_CAM
+print-%:
+	@echo '$($*)'
 
 # ---------------------------------------------------------------------------
 # Garde-fous
