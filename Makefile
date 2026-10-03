@@ -58,7 +58,7 @@ EVAL_REPO_ID   = $(HF_USER)/eval_$(TASK_NAME)_$(shell date +%m%d_%H%M%S)
 RUN       ?= $(TASK_NAME)
 CONDITION ?= nominal
 
-.PHONY: help install install-native install-cuda doctor ports ports-snapshot ports-diff cameras view-oak view-wrist hf-login hf-whoami \
+.PHONY: help install install-native install-cuda doctor ports ports-snapshot ports-diff cameras view-oak view-wrist oak-angle hf-login hf-whoami \
 	udev import-calib calib-status calibrate-follower calibrate-leader teleop \
 	record record-resume check-dataset push-dataset train-cmd train train-act train-resume train-hf-job push-model \
 	rollout policy-server rollout-async eval-log eval-report setup-motors prep \
@@ -108,6 +108,9 @@ view-oak: need-oak need-image prep ## Aperçu en direct de camera1 (OAK-D) pour 
 
 view-wrist: need-wrist need-image prep ## Aperçu en direct de camera2 (poignet) : mise au point, orientation
 	$(call run,$(DEV_WRIST) $(DEV_X11) $(OAK_ENV)) python3 scripts/view_wrist.py $(WRIST_CAM)
+
+oak-angle: need-oak need-image prep ## Inclinaison de camera1 (accéléromètre de l'OAK) ; H=.. D=.. en cm pour l'angle visé
+	$(call run,$(DEV_OAK)) python3 scripts/oak_angle.py $(if $(H),--h $(H)) $(if $(D),--d $(D))
 
 hf-login: need-image prep ## [terminal] Connexion Hugging Face (token dans .cache/, jamais dans le repo)
 	$(call run,) hf auth login

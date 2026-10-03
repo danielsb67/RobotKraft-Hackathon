@@ -44,6 +44,21 @@ def v4l_capture_nodes():
     return nodes
 
 
+def usb_speed_v4l(dev):
+    """Débit du lien USB (Mb/s) de la webcam : 480 = USB 2, 5000 et plus = USB 3."""
+    d = os.path.realpath(f"/sys/class/video4linux/{os.path.basename(dev)}/device")
+    while d != "/" and not os.path.exists(os.path.join(d, "speed")):
+        d = os.path.dirname(d)
+    return read(os.path.join(d, "speed")) if d != "/" else ""
+
+
+def usb_label(mbps):
+    if not mbps:
+        return "?"
+    m = float(mbps)
+    return f"USB {'3' if m >= 5000 else '2' if m >= 480 else '1'} ({int(m)} Mb/s)"
+
+
 def measure(read_frame, fps, warmup_s=1.5, seconds=2.0):
     """Lit pendant warmup_s (auto-exposition), puis compte les images reçues pendant `seconds`."""
     frame, t0 = None, time.time()
@@ -90,7 +105,7 @@ def grab_oak(width, height, fps, timeout_s=30):
         deadline = time.time() + timeout_s
         while not queue.has():
             if time.time() > deadline:
-                return None, 0.0, f"aucune image après {timeout_s} s"
+                return None, 0.0, f"aucune image après {timeout_s} s", ""
             time.sleep(0.01)
 
         def read_frame():
@@ -101,7 +116,9 @@ def grab_oak(width, height, fps, timeout_s=30):
             return msg.getCvFrame()
 
         frame, rate = measure(read_frame, fps)
-    return frame, rate, ""
+        speed = str(pipeline.getDefaultDevice().getUsbSpeed()).split(".")[-1]
+    mbps = {"LOW": "1.5", "FULL": "12", "HIGH": "480", "SUPER": "5000", "SUPER_PLUS": "10000"}.get(speed, "")
+    return frame, rate, "", mbps
 
 
 def main():
@@ -123,19 +140,19 @@ def main():
             print(f"Ignorée (CAM_IGNORE) : {name} ({dev})")
             continue
         frame, rate, err = grab_v4l(dev, args.width, args.height, args.fps)
-        results.append((name, dev, stable.get(dev, "-"), frame, rate, err))
+        results.append((name, dev, stable.get(dev, "-"), frame, rate, err, usb_speed_v4l(dev)))
     if oak_present():
         try:
-            frame, rate, err = grab_oak(args.width, args.height, args.fps)
-        except Exception as e:  # depthai indisponible ou caméra occupée
-            frame, rate, err = None, 0.0, f"{type(e).__name__}: {e}"
-        results.append(("OAK-D (RGB)", "USB 03e7", "camera1 via ZMQ", frame, rate, err))
+            frame, rate, err, mbps = grab_oak(args.width, args.height, args.fps)
+        except Exception as e:  # depthai indisponible ou caméra occupée (aperçu ou record en cours ?)
+            frame, rate, err, mbps = None, 0.0, f"{type(e).__name__}: {e}", ""
+        results.append(("OAK-D (RGB)", "USB 03e7", "camera1 via ZMQ", frame, rate, err, mbps))
     else:
         print("OAK-D non détectée (aucun périphérique USB 03e7).")
 
     print(f"\nCapture demandée : {args.width}x{args.height} @ {args.fps} fps\n")
     tiles = []
-    for label, dev, path, frame, rate, err in results:
+    for label, dev, path, frame, rate, err, mbps in results:
         if frame is None:
             print(f"KO    {label:32} {dev:12} {err}")
             continue
@@ -144,15 +161,17 @@ def main():
         verdicts = []
         if (w, h) != (args.width, args.height):
             verdicts.append(f"taille {w}x{h} != demandée")
-        if rate < 0.8 * args.fps:
-            verdicts.append(f"débit faible ({rate:.1f} fps)")
+        if rate < 0.9 * args.fps:
+            verdicts.append(f"débit faible : {rate:.1f} images/s pour {args.fps} demandées (câble, port, hub, éclairage trop faible ?)")
+        if label.startswith("OAK") and mbps and float(mbps) < 5000:
+            verdicts.append("OAK-D en USB 2 : ça marche en 640x480 mais c'est moins stable ; port bleu USB 3 + câble USB 3, sans hub")
         if mean < DARK:
             verdicts.append("image quasi noire : objectif masqué, caméra retournée ou trop sombre")
         status = "WARN" if verdicts else "OK"
         fname = "".join(c if c.isalnum() else "_" for c in f"{os.path.basename(dev)}_{label}")[:60] + ".jpg"
         cv2.imwrite(os.path.join(args.out, fname), frame)
         print(f"{status:5} {label:32} {dev:12} {w}x{h} {rate:4.1f} fps  luminosité {mean:5.1f}  -> {args.out}/{fname}")
-        print(f"      chemin stable : {path}")
+        print(f"      chemin stable : {path}   |   lien {usb_label(mbps)}   |   débit {'OK' if rate >= 0.9 * args.fps else 'FAIBLE'}")
         for v in verdicts:
             print(f"      ! {v}")
         tile = cv2.resize(frame, (320, 240))
