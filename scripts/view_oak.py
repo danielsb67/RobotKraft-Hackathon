@@ -19,7 +19,7 @@ with dai.Pipeline() as pipeline:
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
         try:  # fenêtre fermée à la souris : selon le backend, 0 ou une exception
-            if cv2.getWindowProperty(WIN, cv2.WND_PROP_VISIBLE) < 1:
+            if cv2.getWindowProperty(WIN, cv2.WND_PROP_VISIBLE) == 0:
                 break
         except cv2.error:
             break
