@@ -62,7 +62,7 @@ CONDITION ?= nominal
 
 .PHONY: help install install-native install-cuda doctor ports ports-snapshot ports-diff cameras view-oak view-wrist oak-angle hf-login hf-whoami \
 	udev import-calib calib-status calibrate-follower calibrate-leader teleop \
-	record record-resume record-tri check-dataset view-dataset delete-episodes push-dataset train-cmd train train-act train-resume train-hf-job push-model \
+	record record-resume record-tri tri-b tri-j tri-r check-dataset view-dataset delete-episodes push-dataset train-cmd train train-act train-resume train-hf-job push-model \
 	rollout policy-server rollout-async eval-log eval-report setup-motors prep \
 	need-follower need-leader need-wrist need-oak need-hf-user need-image need-calib need-calib-follower
 
@@ -165,6 +165,13 @@ record-tri: need-hf-user ## [terminal] Épreuve TRI : SEQ=BBJRRR = couleurs dans
 	@[ -n "$(SEQ)" ] || { echo "ERREUR : précise SEQ, ex. make record-tri SEQ=BBJRRR (B bleu, J jaune, R rouge)"; exit 1; }
 	python3 scripts/tri_record.py --seq $(SEQ) --task-name $(TASK_NAME) --dataset-dir $(DATASET_DIR) \
 		--text-b "$(TRI_TEXT_B)" --text-j "$(TRI_TEXT_J)" --text-r "$(TRI_TEXT_R)" $(if $(DRY),--dry-run)
+
+tri-b: ## [terminal] TRI : 1 épisode, un tube BLEU dans la place libre la plus à gauche
+	@$(MAKE) --no-print-directory record-tri SEQ=B
+tri-j: ## [terminal] TRI : 1 épisode, un tube JAUNE dans la place libre la plus à gauche
+	@$(MAKE) --no-print-directory record-tri SEQ=J
+tri-r: ## [terminal] TRI : 1 épisode, un tube ROUGE dans la place libre la plus à gauche
+	@$(MAKE) --no-print-directory record-tri SEQ=R
 
 check-dataset: need-hf-user need-image prep ## Valide le dataset, trace les trajectoires (outputs/dataset_check/)
 	$(call run,) python3 tools/check_dataset.py --repo-id $(DATASET_REPO_ID) \

@@ -50,7 +50,8 @@ if not seq or len(seq) > 6 or any(c not in COLORS_FR for c in seq):
     sys.exit(f"SEQ={args.seq} invalide : 1 à 6 lettres parmi B, J, R (ex. BBJRRR)")
 texts = {"B": args.text_b, "J": args.text_j, "R": args.text_r}
 
-say(f"Session de {len(seq)} tubes : " + ", ".join(COLORS_FR[c] for c in seq))
+if len(seq) > 1:
+    say(f"Session de {len(seq)} tubes : " + ", ".join(COLORS_FR[c] for c in seq))
 for i, c in enumerate(seq):
     target = "record-resume" if os.path.isdir(args.dataset_dir) else "record"
     cmd = ["make", target, f"TASK_NAME={args.task_name}", "NUM_EPISODES=1", f"TASK_TEXT={texts[c]}"]
