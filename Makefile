@@ -300,8 +300,12 @@ need-leader:
 	@test -e $(LEADER_PORT) || { echo "ERREUR : $(LEADER_PORT) absent. Leader branché (USB + alim 5 V) ? Règles udev posées (make udev) ?"; exit 1; }
 need-wrist:
 	@test -e $(WRIST_CAM) || { echo "ERREUR : caméra poignet $(WRIST_CAM) absente. make cameras, puis corrige WRIST_CAM."; exit 1; }
+# L'OAK se débranche et se rebranche seule (redémarrage) après chaque programme : on lui laisse OAK_WAIT_S secondes.
+OAK_WAIT_S ?= 20
 need-oak:
-	@grep -qs 03e7 /sys/bus/usb/devices/*/idVendor || { echo "ERREUR : OAK-D (USB 03e7) non détectée. Branche-la, de préférence sur un port USB 3."; exit 1; }
+	@for i in $$(seq 1 $(OAK_WAIT_S)); do grep -qs 03e7 /sys/bus/usb/devices/*/idVendor && exit 0; \
+		[ $$i = 1 ] && echo "OAK-D absente : j'attends qu'elle revienne sur l'USB (elle redémarre après chaque programme)..."; sleep 1; done; \
+		echo "ERREUR : OAK-D (USB 03e7) non détectée après $(OAK_WAIT_S) s. Branche-la, de préférence sur un port USB 3."; exit 1
 need-hf-user:
 	@[ "$(HF_USER)" != CHANGE_ME ] || { echo "ERREUR : HF_USER non renseigné. Exemple : echo HF_USER=monpseudo >> config/robotkraft.env.local"; exit 1; }
 need-image:
