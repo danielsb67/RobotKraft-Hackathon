@@ -55,12 +55,14 @@ CALIB_FOLLOWER = $(CALIB_DIR)/robots/so_follower/$(FOLLOWER_ID).json
 CALIB_LEADER   = $(CALIB_DIR)/teleoperators/so_leader/$(LEADER_ID).json
 DATASET_DIR    = $(CACHE_DIR)/huggingface/lerobot/$(DATASET_REPO_ID)
 EVAL_REPO_ID   = $(HF_USER)/eval_$(TASK_NAME)_$(shell date +%m%d_%H%M%S)
+comma := ,
+space := $(subst ,, )
 RUN       ?= $(TASK_NAME)
 CONDITION ?= nominal
 
 .PHONY: help install install-native install-cuda doctor ports ports-snapshot ports-diff cameras view-oak view-wrist oak-angle hf-login hf-whoami \
 	udev import-calib calib-status calibrate-follower calibrate-leader teleop \
-	record record-resume check-dataset push-dataset train-cmd train train-act train-resume train-hf-job push-model \
+	record record-resume check-dataset view-dataset delete-episodes push-dataset train-cmd train train-act train-resume train-hf-job push-model \
 	rollout policy-server rollout-async eval-log eval-report setup-motors prep \
 	need-follower need-leader need-wrist need-oak need-hf-user need-image need-calib need-calib-follower
 
@@ -164,6 +166,17 @@ check-dataset: need-hf-user need-image prep ## Valide le dataset, trace les traj
 		--fps $(CAM_FPS) --width $(CAM_WIDTH) --height $(CAM_HEIGHT) \
 		--task "$(TASK_TEXT)" --expected-episodes $(NUM_EPISODES) \
 		--out outputs/dataset_check/$(subst /,__,$(DATASET_REPO_ID))
+
+view-dataset: need-hf-user need-image prep ## Une vidéo par épisode (2 caméras côte à côte) dans outputs/dataset_view/, pour trier
+	$(call run,) python3 tools/export_episodes.py --repo-id $(DATASET_REPO_ID) --root $(DATASET_DIR) \
+		--out outputs/dataset_view/$(subst /,__,$(DATASET_REPO_ID))
+
+# lerobot-edit-dataset : --root et --new_root identiques = modification sur place, l'original part en <dataset>_old.
+delete-episodes: need-hf-user need-image prep ## Supprime des épisodes en local : EPISODES="3 7" (sauvegarde dans <dataset>_old)
+	@[ -n "$(EPISODES)" ] || { echo 'ERREUR : précise les numéros, ex. make delete-episodes EPISODES="3 7" (voir make view-dataset)'; exit 1; }
+	$(call run,) lerobot-edit-dataset --repo_id $(DATASET_REPO_ID) --root $(DATASET_DIR) --new_root $(DATASET_DIR) \
+		--operation.type delete_episodes --operation.episode_indices "[$(subst $(space),$(comma),$(strip $(EPISODES)))]"
+	@echo "Fait. Ancienne version : $(DATASET_DIR)_old. Les épisodes suivants sont renumérotés : relance make view-dataset."
 
 push-dataset: need-hf-user need-image prep ## Pousse le dataset sur le Hub (privé si HUB_PRIVATE=true)
 	$(call run,) python3 -c "from lerobot.datasets.lerobot_dataset import LeRobotDataset; \
