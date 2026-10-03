@@ -268,9 +268,9 @@ policy-server: prep ## Machine GPU : serveur d'inférence asynchrone officiel (p
 	$(if $(filter docker,$(RUNNER)),$(DOCKER_RUN) --gpus all -p 8080:8080 $(TRAIN_IMAGE)) \
 		python3 -m lerobot.async_inference.policy_server --host=0.0.0.0 --port=8080 --fps=$(CAM_FPS)
 
-rollout-async: need-follower need-wrist need-oak need-calib-follower need-image prep ## [terminal] Rollout avec inférence sur la machine GPU : ASYNC_SERVER=ip:8080
+rollout-async: need-follower need-wrist need-oak need-calib-follower need-image prep ## [terminal] Rollout avec inférence sur la machine GPU : ASYNC_SERVER=ip:8080 (tunnel SSH : localhost:8080)
 	@[ -n "$(ASYNC_SERVER)" ] || { echo "ERREUR : précise ASYNC_SERVER=ip:8080 (machine qui fait tourner make policy-server)"; exit 1; }
-	$(call run,$(DEV_FOLLOWER) $(DEV_WRIST) $(DEV_OAK) $(OAK_ENV)) bash scripts/with_oak.sh \
+	$(call run,--network host $(DEV_FOLLOWER) $(DEV_WRIST) $(DEV_OAK) $(OAK_ENV)) bash scripts/with_oak.sh \
 		python3 scripts/robot_client_zmq.py \
 		$(ROBOT_ARGS) '--robot.cameras=$(CAMERAS)' \
 		--task="$(TASK_TEXT)" --server_address=$(ASYNC_SERVER) \
