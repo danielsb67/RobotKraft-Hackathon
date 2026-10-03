@@ -62,7 +62,7 @@ CONDITION ?= nominal
 
 .PHONY: help install install-native install-cuda doctor ports ports-snapshot ports-diff cameras view-oak view-wrist oak-angle hf-login hf-whoami \
 	udev import-calib calib-status calibrate-follower calibrate-leader teleop \
-	record record-resume check-dataset view-dataset delete-episodes push-dataset train-cmd train train-act train-resume train-hf-job push-model \
+	record record-resume record-tri check-dataset view-dataset delete-episodes push-dataset train-cmd train train-act train-resume train-hf-job push-model \
 	rollout policy-server rollout-async eval-log eval-report setup-motors prep \
 	need-follower need-leader need-wrist need-oak need-hf-user need-image need-calib need-calib-follower
 
@@ -160,6 +160,11 @@ record: need-hf-user need-follower need-leader need-wrist need-oak need-calib ne
 # LeRobot 0.5.1 refuse de reprendre sans dossier explicite (il n'écrit pas dans le cache du Hub).
 record-resume: RECORD_EXTRA = --resume=true --dataset.root=$(DATASET_DIR)
 record-resume: record ## [terminal] Ajoute NUM_EPISODES épisodes au dataset existant
+
+record-tri: need-hf-user ## [terminal] Épreuve TRI : SEQ=BBJRRR = couleurs dans l'ordre de rangement, 1 épisode par tube
+	@[ -n "$(SEQ)" ] || { echo "ERREUR : précise SEQ, ex. make record-tri SEQ=BBJRRR (B bleu, J jaune, R rouge)"; exit 1; }
+	python3 scripts/tri_record.py --seq $(SEQ) --task-name $(TASK_NAME) --dataset-dir $(DATASET_DIR) \
+		--text-b "$(TRI_TEXT_B)" --text-j "$(TRI_TEXT_J)" --text-r "$(TRI_TEXT_R)" $(if $(DRY),--dry-run)
 
 check-dataset: need-hf-user need-image prep ## Valide le dataset, trace les trajectoires (outputs/dataset_check/)
 	$(call run,) python3 tools/check_dataset.py --repo-id $(DATASET_REPO_ID) \
